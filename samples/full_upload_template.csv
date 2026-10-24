@@ -1,0 +1,2 @@
+student_name,programme,academic_year,apaar_id,student_institution_id,gender,dob,admission_date,category,is_supernumerary,is_nri,is_oci,is_foreign_national,enrollment_status
+Sample Student,B.Tech Computer Science,2026-30,900000000001,EIT2026901,F,2008-03-14,2026-07-20,general,false,false,false,false,active

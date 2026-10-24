@@ -1,0 +1,16 @@
+student_name,programme,academic_year,apaar_id,student_institution_id,gender,dob,admission_date,category,is_supernumerary,is_nri,is_oci,is_foreign_national,enrollment_status
+Vivaan Sharma,B.Tech Computer Science,2026-30,901043321819,EIT2026001,M,2007-08-12,2026-08-24,obc,false,false,false,false,active
+Riya Sharma,B.Tech Computer Science,2026-30,903890838637,EIT2026002,M,2008-03-08,2026-09-14,nri,false,true,false,false,active
+Karan Iyer,B.Tech Computer Science,2026-30,905423511615,EIT2026003,M,2008-04-15,2026-08-14,oci,false,false,true,false,active
+Aditya Verma,B.Tech Computer Science,2026-30,908161849593,EIT2026004,M,2007-10-24,2026-09-29,foreign_national,false,false,false,true,active
+Pooja Iyer,B.Tech Computer Science,2026-30,901316475255,EIT2026005,M,2007-06-25,2026-07-27,obc,false,false,false,false,active
+Vivaan Kulkarni,B.Tech Computer Science,2026-30,908327648350,EIT2026006,F,2007-10-02,2026-07-30,sc,false,false,false,false,active
+Sai Iyer,B.Tech Computer Science,2026-30,901395376724,EIT2026007,F,2008-08-20,2026-07-18,general,false,false,false,false,active
+Kabir Das,B.Tech Computer Science,2026-30,906532871012,EIT2026008,M,2008-01-30,2026-09-19,general,false,false,false,false,active
+Missing Apaar,B.Tech Computer Science,2026-30,,EIT2026951,M,2008-01-01,2026-07-21,general,false,false,false,false,active
+Short Format,B.Tech Computer Science,2026-30,9000000012,EIT2026952,F,2008-02-02,2026-07-21,general,false,false,false,false,active
+Duplicate In Batch,B.Tech Computer Science,2026-30,901043321819,EIT2026953,M,2008-03-03,2026-07-22,general,false,false,false,false,active
+Cross Institution Dup,B.Tech Computer Science,2026-30,904612004711,EIT2026954,M,2008-04-04,2026-07-22,general,false,false,false,false,active
+Late Admission,B.Tech Computer Science,2026-30,900000000099,EIT2026955,F,2008-05-05,2025-12-01,general,false,false,false,false,active
+Category Conflict,B.Tech Computer Science,2026-30,900000000098,EIT2026956,M,2008-06-06,2026-07-25,general,false,true,false,false,active
+,B.Tech Computer Science,2026-30,900000000097,,F,,2026-07-25,general,false,false,false,false,active
