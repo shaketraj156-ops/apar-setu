@@ -1,17 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="APAARSetu Backend", version="0.1.0")
+from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
 
+
+settings = get_settings()
+app = FastAPI(title=settings.APP_NAME, version='1.0.0')
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
+register_exception_handlers(app)
 
 
-@app.get("/health")
-def health_check():
-    return {"status": "ok", "service": "APAARSetu Backend"}
+@app.get('/health', tags=['system'])
+def health():
+    return {
+        'status': 'ok',
+        'service': settings.APP_NAME,
+        'env': settings.ENV,
+    }
