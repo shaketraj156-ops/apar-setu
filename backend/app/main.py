@@ -1,42 +1,44 @@
+﻿# File: backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import (
-    reports,
-    students,
-    batches,
-    consent,
-    verification,
-    institutions,
-    programmes
-)
+
+from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
+from app.api.v1.router import api_router
+from app.api.v1 import reports, consent, verification
+
+settings = get_settings()
 
 app = FastAPI(
-    title="APAARSetu API",
+    title=settings.APP_NAME,
     description="APAAR ID-Based Student Data Management and Verification Platform for AICTE",
     version="1.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list if settings.cors_origin_list else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# API v1 routes
+register_exception_handlers(app)
+
+# Core Dev 2 REST API (Auth, Institutions, Programmes, Students, Uploads, Batches, Verify)
+app.include_router(api_router, prefix="/api/v1")
+
+# Additional reporting, consent, and verification routes
 app.include_router(reports.router, prefix="/api/v1")
-app.include_router(students.router, prefix="/api/v1")
-app.include_router(batches.router, prefix="/api/v1")
 app.include_router(consent.router, prefix="/api/v1")
 app.include_router(verification.router, prefix="/api/v1")
-app.include_router(institutions.router, prefix="/api/v1")
-app.include_router(programmes.router, prefix="/api/v1")
 
-@app.get("/health")
-def health_check():
+
+@app.get("/health", tags=["system"])
+def health():
     return {
         "status": "ok",
-        "service": "APAARSetu Backend",
+        "service": settings.APP_NAME,
+        "env": settings.ENV,
         "version": "1.0.0"
     }
