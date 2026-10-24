@@ -1,6 +1,6 @@
-# APAARSetu
+# ApaarSetu
 
-APAARSetu is a starter monorepo for an APAAR ID-based student data management and verification platform for AICTE-approved institutions. This repository contains the initial app shells, health endpoints, synthetic registry data, and documentation placeholders. It does not yet implement the full product.
+APAARSetu is a starter monorepo for an APAAR ID-based student data management and verification platform for AICTE-approved institutions.This repository contains the initial app shells, health endpoints,synthetic registry data, and documentation placeholders. It does not yet implement the full product.
 
 ## Tech stack
 

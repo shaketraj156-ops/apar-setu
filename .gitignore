@@ -9,4 +9,5 @@ build/
 .DS_Store
 coverage/
 .pytest_cache/
+DEV3_WORK_SUMMARY.md
 
