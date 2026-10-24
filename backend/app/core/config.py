@@ -1,7 +1,5 @@
-"""Application configuration placeholder."""
-
+# File: backend/app/core/config.py
 from functools import lru_cache
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +10,7 @@ class Settings(BaseSettings):
     ENV: str = 'dev'
     DATABASE_URL: str
     SUPABASE_URL: str
+    SUPABASE_PUBLISHABLE_KEY: str = ''
     SUPABASE_JWT_SECRET: str | None = None
     SUPABASE_JWT_AUDIENCE: str = 'authenticated'
     CORS_ORIGINS: str = 'http://localhost:5173'
@@ -19,6 +18,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_ROWS: int = 20000
     USE_FAKE_REGISTRY: bool = True
     ALLOW_INSTITUTION_INTAKE_EDIT: bool = True
+    REQUIRE_CONSENT_FOR_VERIFIER: bool = True
     SIGNING_SECRET: str = 'change-me'
     VERIFY_RATE_LIMIT_PER_MIN: int = 30
 
