@@ -1,0 +1,7 @@
+import { Link } from 'react-router-dom'
+
+const publicLinks = [['Home', '/'], ['Features', '/features'], ['How It Works', '/how-it-works'], ['About', '/about']]
+const portalLinks = [['Institution', '/institution'], ['AICTE', '/aicte'], ['Student', '/student'], ['Verifier', '/verifier']]
+export default function Footer() {
+  return <footer className="border-t border-slate-200 bg-white"><div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr]"><div><Link to="/" className="text-xl font-extrabold text-slate-950">APAAR<span className="text-blue-700">Setu</span></Link><p className="mt-3 max-w-sm text-sm leading-6 text-slate-600">A trusted academic records and verification platform for the student data ecosystem.</p><p className="mt-3 text-xs font-semibold text-amber-800">Demo project using synthetic APAAR data</p></div><nav aria-label="Quick links"><h2 className="text-sm font-bold text-slate-900">Quick links</h2><ul className="mt-3 space-y-2">{publicLinks.map(([label, href]) => <li key={href}><Link className="footer-link" to={href}>{label}</Link></li>)}</ul></nav><nav aria-label="Portal links"><h2 className="text-sm font-bold text-slate-900">Portals</h2><ul className="mt-3 space-y-2">{portalLinks.map(([label, href]) => <li key={href}><Link className="footer-link" to={href}>{label}</Link></li>)}</ul></nav></div><div className="border-t border-slate-100 py-4 text-center text-xs text-slate-500">© {new Date().getFullYear()} APAARSetu · Demonstration platform</div></footer>
+}
