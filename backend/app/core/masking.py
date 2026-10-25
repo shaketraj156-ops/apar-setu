@@ -1,10 +1,10 @@
-# File: backend/app/core/masking.py
+﻿# File: backend/app/core/masking.py
 import hashlib
+import hmac
 
 
 def mask_apaar_id(apaar_id: str | None) -> str:
     """
-    Strictly follows Doc Page 8:
     Masks the 12-digit APAAR ID showing only the last 4 digits:
     Example: 123456784821 -> ********4821
     """
@@ -17,8 +17,22 @@ def mask_apaar_id(apaar_id: str | None) -> str:
     return ("*" * masked_length) + clean_id[-4:]
 
 
-def hash_apaar_id(apaar_id: str | None) -> str | None:
-    """Returns SHA-256 hash of APAAR ID for zero-knowledge privacy lookups."""
+def hash_apaar_id(apaar_id: str | None, secret: str | None = None) -> str | None:
+    """
+    Cryptographic HMAC-SHA256 hash of APAAR ID for zero-knowledge privacy lookups.
+    Using HMAC with a server secret prevents rainbow-table / brute-force reversal
+    of 12-digit numbers (10^12 space).
+    """
     if not apaar_id:
         return None
-    return hashlib.sha256(str(apaar_id).strip().encode("utf-8")).hexdigest()
+    clean = str(apaar_id).strip()
+    
+    key = secret
+    if not key:
+        try:
+            from app.core.config import get_settings
+            key = get_settings().SIGNING_SECRET
+        except Exception:
+            key = "apaarsetu-default-hmac-key-2026"
+
+    return hmac.new(key.encode("utf-8"), clean.encode("utf-8"), hashlib.sha256).hexdigest()
