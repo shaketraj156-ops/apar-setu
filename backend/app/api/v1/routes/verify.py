@@ -12,6 +12,7 @@ from app.services.verification_service import verify_student_credential
 router = APIRouter()
 
 @router.post("/request", response_model=VerifyResponse, dependencies=[Depends(check_verify_rate_limit)])
+@router.post("/student", response_model=VerifyResponse, dependencies=[Depends(check_verify_rate_limit)])
 def request_verification(
     payload: VerifyRequestInput,
     request: Request,

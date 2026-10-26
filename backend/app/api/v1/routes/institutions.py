@@ -42,12 +42,33 @@ def get_institution_stats(
     if not inst_id:
         return {"error": "User does not belong to any institution"}
 
-    total_programmes = db.scalar(select(func.count(Programme.id)).where(Programme.institution_id == inst_id)) or 0
-    approved_intake = db.scalar(select(func.sum(Programme.approved_intake)).where(Programme.institution_id == inst_id)) or 0
+    progs = db.scalars(select(Programme).where(Programme.institution_id == inst_id)).all()
+    total_programmes = len(progs)
+    approved_intake = sum(p.approved_intake or 0 for p in progs)
     total_students = db.scalar(select(func.count(StudentRecord.id)).where(StudentRecord.institution_id == inst_id)) or 0
     submitted_students = db.scalar(select(func.count(StudentRecord.id)).where(StudentRecord.institution_id == inst_id, StudentRecord.record_status == "submitted")) or 0
     total_batches = db.scalar(select(func.count(UploadBatch.id)).where(UploadBatch.institution_id == inst_id)) or 0
     clean_batches = db.scalar(select(func.count(UploadBatch.id)).where(UploadBatch.institution_id == inst_id, UploadBatch.status == "submitted")) or 0
+
+    programme_stats = []
+    for p in progs:
+        enrolled = db.scalar(select(func.count(StudentRecord.id)).where(StudentRecord.programme_id == p.id)) or 0
+        util = round((enrolled / p.approved_intake * 100), 2) if p.approved_intake else 0.0
+        programme_stats.append({
+            "id": str(p.id),
+            "name": p.name,
+            "approved_intake": p.approved_intake,
+            "supernumerary_quota": p.supernumerary_quota,
+            "enrolled_count": enrolled,
+            "utilization_pct": util
+        })
+
+    cat_counts = db.execute(
+        select(StudentRecord.category, func.count(StudentRecord.id))
+        .where(StudentRecord.institution_id == inst_id)
+        .group_by(StudentRecord.category)
+    ).all()
+    category_breakdown = {cat or "general": count for cat, count in cat_counts}
 
     return {
         "institution_id": str(inst_id),
@@ -57,7 +78,9 @@ def get_institution_stats(
         "submitted_students": submitted_students,
         "intake_utilization_pct": round((total_students / approved_intake * 100), 2) if approved_intake else 0.0,
         "total_batches": total_batches,
-        "submitted_clean_batches": clean_batches
+        "submitted_clean_batches": clean_batches,
+        "programme_intake_meter": programme_stats,
+        "category_breakdown": category_breakdown
     }
 
 @router.get("/{id}", response_model=InstitutionRead)
