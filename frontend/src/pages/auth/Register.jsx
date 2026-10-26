@@ -62,10 +62,6 @@ export default function Register() {
       return
     }
 
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      setError('Authentication is not configured. Set the frontend Supabase environment variables and restart Vite.')
-      return
-    }
 
     setBusy(true)
     try {

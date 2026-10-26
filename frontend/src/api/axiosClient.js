@@ -2,7 +2,7 @@ import axios from 'axios'
 import { supabase } from './supabaseClient'
 
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://snap-backend-rq8g.onrender.com',
 })
 
 axiosClient.interceptors.request.use(async (config) => {

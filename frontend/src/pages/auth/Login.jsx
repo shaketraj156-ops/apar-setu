@@ -32,11 +32,6 @@ export default function Login() {
     setError('')
     setBusy(true)
 
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      setError('Authentication is not configured. Set the frontend Supabase environment variables and restart Vite.')
-      setBusy(false)
-      return
-    }
 
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })

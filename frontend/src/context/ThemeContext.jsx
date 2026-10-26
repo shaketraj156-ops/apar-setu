@@ -3,24 +3,22 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 const ThemeContext = createContext(null)
 
 export function ThemeProvider({ children }) {
+  // Default to 'light' mode explicitly
   const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('apaarsetu_theme') || 'system'
+    return localStorage.getItem('apaarsetu_theme') || 'light'
   })
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') return false
     const saved = localStorage.getItem('apaarsetu_theme')
-    if (saved === 'dark') return true
-    if (saved === 'light') return false
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
+    return saved === 'dark'
   })
 
   useEffect(() => {
     const root = document.documentElement
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
     const applyTheme = () => {
-      const activeDark = theme === 'dark' || (theme === 'system' && mediaQuery.matches)
+      const activeDark = theme === 'dark'
       setIsDark(activeDark)
       if (activeDark) {
         root.classList.add('dark')
@@ -31,13 +29,6 @@ export function ThemeProvider({ children }) {
 
     applyTheme()
     localStorage.setItem('apaarsetu_theme', theme)
-
-    const handleChange = () => {
-      if (theme === 'system') applyTheme()
-    }
-
-    mediaQuery.addEventListener('change', handleChange)
-    return () => mediaQuery.removeEventListener('change', handleChange)
   }, [theme])
 
   const toggleTheme = () => {

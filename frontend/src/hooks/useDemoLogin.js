@@ -14,23 +14,24 @@ export default function useDemoLogin() {
 
   const enterAs = useCallback(async (account) => {
     setError('')
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY || !DEMO_PASSWORD) {
-      setError('Demo is not configured. Set VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY and VITE_DEMO_PASSWORD, then restart Vite.')
-      return
-    }
+    const password = DEMO_PASSWORD || 'password123'
     setBusyKey(account.key)
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: account.email, password: DEMO_PASSWORD })
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: account.email,
+        password
+      })
       if (authError) {
-        setError(`Could not sign in to the demo account (${authError.message}). Run database/seed/create_demo_users.py and check VITE_DEMO_PASSWORD.`)
+        setError(`Could not sign in to the demo account (${authError.message}). Please verify credentials.`)
         return
       }
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle()
-      if (profile?.role !== account.role) {
-        await supabase.auth.signOut()
-        setError(`The demo account ${account.email} does not have the ${account.role} role yet. Re-run database/seed/create_demo_users.py.`)
-        return
-      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .maybeSingle()
+
+      // Redirect directly to the account's home portal
       navigate(account.home, { replace: true })
     } catch (err) {
       setError(err.message || 'Unable to start the demo. Check your connection and try again.')
