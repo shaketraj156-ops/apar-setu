@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from app.api.deps import CurrentUser, get_current_user
 from pydantic import BaseModel
 from app.services.supabase_client import get_supabase_admin_client
 from app.services.consent_service import (
@@ -22,8 +23,14 @@ def list_consents(
     student_id: Optional[str] = Query(None),
     record_id: Optional[str] = Query(None),
     requester_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None)
+    status: Optional[str] = Query(None),
+    user: CurrentUser = Depends(get_current_user),
 ):
+    # Students only see consents addressed to them; verifiers only the ones they requested.
+    if user.role == "student":
+        student_id = str(user.id)
+    elif user.role == "verifier":
+        requester_id = str(user.id)
     client = get_supabase_admin_client()
     query = client.table("consent_records").select("*, student_records(full_name, student_institution_id, programmes(name), institutions(name))")
     if student_id:
@@ -55,8 +62,12 @@ def list_consents(
     return out
 
 @router.post("", status_code=201)
-def request_consent(req: CreateConsentRequest):
+def request_consent(req: CreateConsentRequest, user: CurrentUser = Depends(get_current_user)):
     client = get_supabase_admin_client()
+    if user.role == "student":
+        req.student_id = str(user.id)
+    elif user.role == "verifier":
+        req.requester_id = str(user.id)
 
     # 1. Lookup student record
     rec_res = client.table("student_records").select("id, apaar_id_hash").eq("id", req.record_id).execute()
@@ -99,25 +110,28 @@ def request_consent(req: CreateConsentRequest):
     return ins_res.data[0]
 
 @router.post("/{consent_id}/grant")
-def grant_consent(consent_id: str, actor_id: Optional[str] = Query(None)):
-    return _apply_transition(consent_id, GRANTED, actor_id)
+def grant_consent(consent_id: str, user: CurrentUser = Depends(get_current_user)):
+    return _apply_transition(consent_id, GRANTED, user)
 
 @router.post("/{consent_id}/reject")
-def reject_consent(consent_id: str, actor_id: Optional[str] = Query(None)):
-    return _apply_transition(consent_id, REJECTED, actor_id)
+def reject_consent(consent_id: str, user: CurrentUser = Depends(get_current_user)):
+    return _apply_transition(consent_id, REJECTED, user)
 
 @router.post("/{consent_id}/revoke")
-def revoke_consent(consent_id: str, actor_id: Optional[str] = Query(None)):
-    return _apply_transition(consent_id, REVOKED, actor_id)
+def revoke_consent(consent_id: str, user: CurrentUser = Depends(get_current_user)):
+    return _apply_transition(consent_id, REVOKED, user)
 
-def _apply_transition(consent_id: str, new_status: str, actor_id: Optional[str]):
+def _apply_transition(consent_id: str, new_status: str, user: CurrentUser):
     client = get_supabase_admin_client()
     res = client.table("consent_records").select("*").eq("id", consent_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Consent record not found")
     r = res.data[0]
 
-    actor = actor_id or r["student_id"]
+    # Only the student the consent belongs to (or a national admin) may decide it.
+    if user.role not in ("system_admin",) and str(r["student_id"]) != str(user.id):
+        raise HTTPException(status_code=403, detail="Only the student who owns this consent can change it")
+    actor = str(user.id)
     exp = datetime.fromisoformat(r["expires_at"].replace("Z", "+00:00")) if r.get("expires_at") else None
     c = Consent(
         id=r["id"],

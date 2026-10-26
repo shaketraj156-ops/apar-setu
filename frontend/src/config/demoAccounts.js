@@ -7,7 +7,7 @@
  * Use a password reserved for these synthetic-data accounts.
  */
 export const DEMO_ENABLED = import.meta.env.VITE_ENABLE_DEMO === 'true'
-export const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'password123'
+export const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || ''
 export const DEMO_EMAIL_DOMAIN = '@demo.test'
 
 export const DEMO_ACCOUNTS = [

@@ -1,4 +1,4 @@
-﻿# File: backend/app/core/config.py
+# File: backend/app/core/config.py
 from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,9 +47,30 @@ class Settings(BaseSettings):
         return self.SUPABASE_URL.rstrip("/") + "/auth/v1"
 
 
+def _assert_production_safe(s: "Settings") -> None:
+    if s.ENV.lower() not in ("production", "prod"):
+        return
+    problems = []
+    if s.JWT_SECRET.startswith("apar_setu_secret") or len(s.JWT_SECRET) < 32:
+        problems.append("JWT_SECRET must be set to a random value of 32+ characters")
+    if s.SIGNING_SECRET == "change-me" or len(s.SIGNING_SECRET) < 32:
+        problems.append("SIGNING_SECRET must be set to a random value of 32+ characters")
+    if not s.DATABASE_URL or s.DATABASE_URL.startswith("sqlite"):
+        problems.append("DATABASE_URL must point at the production Postgres database")
+    if not s.SUPABASE_SERVICE_ROLE_KEY:
+        problems.append("SUPABASE_SERVICE_ROLE_KEY is required")
+    if not s.QR_PRIVATE_KEY_PEM or not s.QR_PUBLIC_KEY_PEM:
+        problems.append("QR_PRIVATE_KEY_PEM and QR_PUBLIC_KEY_PEM are required")
+    if not s.cors_origin_list or any("localhost" in o for o in s.cors_origin_list):
+        problems.append("CORS_ORIGINS must list the deployed frontend URL (no localhost)")
+    if problems:
+        raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
+
+
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
+    _assert_production_safe(s)
     if s.QR_PRIVATE_KEY_PEM and "\\n" in s.QR_PRIVATE_KEY_PEM:
         s.QR_PRIVATE_KEY_PEM = s.QR_PRIVATE_KEY_PEM.replace("\\n", "\n").strip('"')
     if s.QR_PUBLIC_KEY_PEM and "\\n" in s.QR_PUBLIC_KEY_PEM:

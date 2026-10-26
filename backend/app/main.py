@@ -1,9 +1,10 @@
 # File: backend/app/main.py
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
+from app.api.deps import get_current_user, require_role
 from app.api.v1.router import api_router
 from app.api.v1 import reports, consent, verification, audit
 
@@ -29,11 +30,12 @@ register_exception_handlers(app)
 app.include_router(api_router, prefix="/api/v1")
 
 # Additional reporting, consent, verification, and audit routes (Supabase-direct path)
-app.include_router(reports.router, prefix="/api/v1")
-app.include_router(consent.router, prefix="/api/v1")
+NATIONAL_ROLES = ["aicte_officer", "auditor", "system_admin"]
+app.include_router(reports.router, prefix="/api/v1", dependencies=[Depends(require_role(NATIONAL_ROLES))])
+app.include_router(consent.router, prefix="/api/v1", dependencies=[Depends(get_current_user)])
 app.include_router(verification.router, prefix="/api/v1")
 # T5: Audit logs route — exposes append-only audit trail to AICTE officers and auditors
-app.include_router(audit.router, prefix="/api/v1")
+app.include_router(audit.router, prefix="/api/v1", dependencies=[Depends(require_role(NATIONAL_ROLES))])
 
 
 @app.get("/health", tags=["system"])

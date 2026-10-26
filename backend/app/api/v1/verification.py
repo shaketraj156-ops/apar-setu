@@ -1,6 +1,7 @@
 import base64
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Response, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Body
+from app.api.deps import CurrentUser, get_current_user
 from pydantic import BaseModel
 from app.services.supabase_client import get_supabase_admin_client
 from app.services.qr_credentials import (
@@ -19,7 +20,7 @@ class GenerateQRRequest(BaseModel):
     record_id: str
 
 @router.post("/verify/student")
-def verify_student(req: VerifyStudentRequest):
+def verify_student(req: VerifyStudentRequest, user: CurrentUser = Depends(get_current_user)):
     client = get_supabase_admin_client()
 
     # 1. Fetch student record with relations
@@ -60,13 +61,18 @@ def verify_student(req: VerifyStudentRequest):
     }
 
 @router.post("/credentials/qr")
-def generate_qr_credential(req: GenerateQRRequest):
+def generate_qr_credential(req: GenerateQRRequest, user: CurrentUser = Depends(get_current_user)):
     client = get_supabase_admin_client()
 
     res = client.table("student_records").select("*, institutions(name), programmes(name)").eq("id", req.record_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Student record not found")
     record = res.data[0]
+
+    if user.role == "student" and record.get("apaar_id_hash") != user.apaar_id_hash:
+        raise HTTPException(status_code=403, detail="Students can only generate credentials for their own record")
+    if user.role in ("institution_admin", "institution_staff") and str(record.get("institution_id")) != str(user.institution_id):
+        raise HTTPException(status_code=403, detail="Access to other institution's data is forbidden")
 
     rec_dict = {
         "apaar_id": record.get("apaar_id", ""),
