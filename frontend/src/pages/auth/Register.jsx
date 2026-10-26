@@ -12,7 +12,8 @@ export default function Register() {
   const [role, setRole] = useState('student'); const [institutionId, setInstitutionId] = useState(''); const [institutions, setInstitutions] = useState([])
   const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   const { user, role: currentRole, loading } = useAuth(); const navigate = useNavigate()
-  useEffect(() => { if (institutionRoles.includes(role)) axiosClient.get('/api/v1/institutions').then(({ data }) => setInstitutions(data || [])).catch(() => setInstitutions([])) }, [role])
+  // T6 FIX: Backend returns paginated { items: [...] } — must unwrap .items
+  useEffect(() => { if (institutionRoles.includes(role)) axiosClient.get('/api/v1/institutions').then(({ data }) => setInstitutions(data?.items || [])).catch(() => setInstitutions([])) }, [role])
   if (!loading && user) return <RoleBasedRedirect role={currentRole} />
   const submit = async (event) => {
     event.preventDefault(); setError(''); setMessage('')

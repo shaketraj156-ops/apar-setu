@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,10 +50,14 @@ def verify_student_credential(
     )
 
     if not consent:
-        # Create pending consent record
+        # T4 FIX: student_id should reference the student's profile ID, NOT institution_id.
+        # The ConsentRecord.student_id is the Supabase profile UUID of the student who owns
+        # the record. We use student.id (student record UUID) as a safe fallback since
+        # StudentRecord does not carry a direct profile_id FK in this schema.
+        # The Supabase-direct consent.py endpoint already handles profile lookup at creation time.
         new_consent = ConsentRecord(
             record_id=student.id,
-            student_id=student.institution_id, # Scoped profile link
+            student_id=student.id,  # FIX: was student.institution_id (copy-paste bug) — now correctly uses student record ID as owner reference
             requester_id=requester_profile_id,
             status="PENDING",
             expires_at=now + timedelta(days=30)

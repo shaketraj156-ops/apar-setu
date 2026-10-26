@@ -1,28 +1,40 @@
 # File: backend/scripts/get_token.py
+"""Utility script to fetch a JWT token for a given user.
+It contacts the local FastAPI authentication endpoint (http://localhost:8000/api/v1/auth/login).
+This works for the demo users defined in the README.
+"""
 import sys
+import os
+import json
 import httpx
-from app.core.config import get_settings
 
-settings = get_settings()
+# Base URL of the backend; can be overridden via environment variable.
+BASE_URL = os.getenv("APP_BACKEND_URL", "http://localhost:8000")
+LOGIN_ENDPOINT = f"{BASE_URL}/api/v1/auth/login"
 
-
-def fetch_token(email: str, password: str):
-    url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/token?grant_type=password"
-    headers = {
-        "apikey": settings.SUPABASE_PUBLISHABLE_KEY,
-        "Content-Type": "application/json"
-    }
-    data = {"email": email, "password": password}
-    
-    resp = httpx.post(url, headers=headers, json=data)
-    if resp.status_code != 200:
-        print(f"Failed to get token: {resp.status_code} - {resp.text}")
+def fetch_token(email: str, password: str) -> None:
+    """Request a JWT token from the local backend and print it.
+    Args:
+        email: User email address.
+        password: Plain‑text password.
+    """
+    payload = {"email": email, "password": password}
+    try:
+        resp = httpx.post(LOGIN_ENDPOINT, json=payload, timeout=10)
+    except Exception as exc:
+        print(f"Failed to reach {LOGIN_ENDPOINT}: {exc}")
         return
-    tokens = resp.json()
+    if resp.status_code != 200:
+        print(f"Login failed ({resp.status_code}): {resp.text}")
+        return
+    data = resp.json()
+    token = data.get("access_token") or data.get("token")
+    if not token:
+        print("Token not found in response:", data)
+        return
     print("\n--- ACCESS TOKEN ---")
-    print(tokens.get("access_token"))
+    print(token)
     print("--------------------\n")
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

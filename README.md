@@ -166,3 +166,39 @@ cd apaarsetu
 git switch -c dev/<your-name>
 ```
 
+# ApaarSetu
+
+...
+
+## 📦 Quick start (already running)
+
+The frontend (`npm run dev`) and backend (`uvicorn app.main:app …`) are up and listening on:
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- Mock registry (for APAA R verification): http://localhost:8001
+
+> **Both terminals are still active**. If you close them, re‑run the same commands from the sections below.
+
+## 👥 Demo Users (ready‑to‑login)
+
+The project ships with three seeded accounts that you can use to exercise **all UI sections** and **role‑based permissions**.
+
+| Role               | Email                     | Password | What you can test |
+|--------------------|---------------------------|----------|-------------------|
+| **Admin**          | `admin@apar-setu.org`     | `password123` | Full access – all audit logs, global data‑quality & category reports, institution management, CSV/Excel export. |
+| **Institution Admin** | `instadmin@college1.edu` | `password123` | Institution‑scoped view – can upload student batches, see audit logs only for its institution, Data‑Quality & Category tabs filtered to its own data. |
+| **Verifier**       | `verifier@apar-setu.org`  | `password123` | Verification workflow – list/approve verification requests, view only verification‑related audit logs, no admin or institution settings. |
+
+### How to obtain a JWT token
+
+You can either:
+
+1. **Log in via the UI** – enter the email/password above on the login page. The app stores the JWT automatically.
+2. **Use the helper script** (already in the repo):
+
+```powershell
+# From the backend folder
+cd d:\GitHub\apar-setu\backend
+.\venv\Scripts\Activate.ps1   # activate the venv if not already
+python scripts/get_token.py admin@apar-setu.org password123
