@@ -9,6 +9,10 @@
       "destination": "https://snap-backend-rq8g.onrender.com/api/:path*"
     },
     {
+      "source": "/supabase/:path*",
+      "destination": "https://bxsiwlxjjgjnoxuxegah.supabase.co/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

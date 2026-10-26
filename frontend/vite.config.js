@@ -13,6 +13,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/supabase': {
+        target: 'https://bxsiwlxjjgjnoxuxegah.supabase.co',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/supabase/, ''),
+      },
     },
   },
 })
