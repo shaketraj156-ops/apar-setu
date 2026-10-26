@@ -20,6 +20,7 @@ class CreateConsentRequest(BaseModel):
 @router.get("")
 def list_consents(
     student_id: Optional[str] = Query(None),
+    record_id: Optional[str] = Query(None),
     requester_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None)
 ):
@@ -27,6 +28,8 @@ def list_consents(
     query = client.table("consent_records").select("*, student_records(full_name, student_institution_id, programmes(name), institutions(name))")
     if student_id:
         query = query.eq("student_id", student_id)
+    if record_id:
+        query = query.eq("record_id", record_id)
     if requester_id:
         query = query.eq("requester_id", requester_id)
     if status:

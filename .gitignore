@@ -10,4 +10,6 @@ build/
 coverage/
 .pytest_cache/
 DEV3_WORK_SUMMARY.md
+*.db
+*.sqlite3
 

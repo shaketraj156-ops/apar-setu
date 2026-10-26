@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    APP_NAME: str = "APAARSetu API"
+    APP_NAME: str = "SNAP API"
     ENV: str = "dev"
     DATABASE_URL: str = ""
     SUPABASE_URL: str = "https://bxsiwlxjjgjnoxuxegah.supabase.co"

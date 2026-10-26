@@ -1,4 +1,4 @@
--- APAARSetu — 001 schema
+-- SNAP — 001 schema
 -- Run order: migrations/001, migrations/002, views/003, seed/seed_data.sql. Synthetic data only.
 -- (The mock APAAR registry is a separate service: mock_apaar_registry/.)
 

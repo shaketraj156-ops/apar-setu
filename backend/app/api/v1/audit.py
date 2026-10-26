@@ -1,5 +1,5 @@
 """
-Audit Logs API — APAARSetu
+Audit Logs API — SNAP
 ===========================
 Exposes the append-only audit_logs table for AICTE officers and auditors.
 

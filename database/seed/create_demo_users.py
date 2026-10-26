@@ -1,4 +1,4 @@
-"""Create (or refresh) the APAARSetu demo accounts in Supabase.
+"""Create (or refresh) the SNAP demo accounts in Supabase.
 
 The website's "Try the demo" buttons sign in with these accounts, so each portal
 can be explored with one click and no registration.
@@ -30,7 +30,6 @@ sys.path.insert(0, str(REPO / "backend"))
 
 from supabase import create_client  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
-from app.core.masking import hash_apaar_id  # noqa: E402
 
 # Synthetic APAAR ID of "Vivaan Sharma" (EIT2026001) from seed_data.sql.
 STUDENT_APAAR_ID = "901043321819"
@@ -112,7 +111,22 @@ def main():
         )
 
     institution_id = institutions[0]["id"]
-    apaar_hash = hash_apaar_id(STUDENT_APAAR_ID)
+    # Link the demo student to their record using the hash the DATABASE computed
+    # (student_records.apaar_id_hash is a generated sha256 column). Re-hashing here
+    # with the app's HMAC would never match it and the student portal would be empty.
+    seeded = (
+        supabase.table("student_records")
+        .select("apaar_id_hash")
+        .eq("apaar_id", STUDENT_APAAR_ID)
+        .execute()
+        .data
+    )
+    if not seeded or not seeded[0].get("apaar_id_hash"):
+        sys.exit(
+            f"No student record found for APAAR ID {STUDENT_APAAR_ID}. "
+            "Apply database/seed/seed_data.sql first."
+        )
+    apaar_hash = seeded[0]["apaar_id_hash"]
 
     # Create or refresh each demo Auth user and its profile.
     for spec in DEMO_USERS:

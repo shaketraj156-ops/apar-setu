@@ -18,6 +18,7 @@ class CurrentUser:
     role: str
     institution_id: uuid.UUID | None
     full_name: str | None
+    apaar_id_hash: str | None = None
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -60,7 +61,8 @@ def get_current_user(
         email=profile.email,
         role=profile.role,
         institution_id=profile.institution_id,
-        full_name=profile.full_name
+        full_name=profile.full_name,
+        apaar_id_hash=profile.apaar_id_hash
     )
 
 

@@ -1,7 +1,7 @@
-# APAARSetu - Dev 2 (Backend) Complete Work & System Explanation Document
+# SNAP - Dev 2 (Backend) Complete Work & System Explanation Document
 
 **Role:** Dev 2 (Backend & Verification Engine Lead)  
-**Project:** APAARSetu (AICTE Student Data Management & Zero-Disclosure Verification Platform)  
+**Project:** SNAP (AICTE Student Data Management & Zero-Disclosure Verification Platform)  
 **Language:** Simple & Clean Hinglish  
 **Purpose:** Team Sharing, Technical Handoff, aur Presentation Guide  
 

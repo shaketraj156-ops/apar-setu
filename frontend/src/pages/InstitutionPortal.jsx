@@ -1,35 +1,44 @@
-/**
- * InstitutionPortal.jsx — APAARSetu Institution Portal
- * =====================================================
- * Main portal for institution staff and admins to:
- *  - Select and switch between institutions (or auto-selected from JWT profile)
- *  - View programme intake utilization with real calculated % bars (T9 fix)
- *  - Upload student CSV/Excel batch files for validation
- *  - View and correct row-level validation errors inline
- *  - Submit clean batches to AICTE Central Repository
- *
- * Backend integration fixes:
- *  - T6: institutions list now unwraps `.items` from paginated response
- *  - T7: programmes list now unwraps `.items` from paginated response
- *  - T8: students list now unwraps `.items` and uses `page_size` param correctly
- *  - T9: intake utilization % is now calculated from real student count vs approved_intake
- *        (was hardcoded to 85% before)
- *  - PATCH endpoint is now `/api/v1/students/{id}` (T3 backend fix matches this call)
- */
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  Building2,
+  UploadCloud,
+  FileSpreadsheet,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Send,
+  Edit3,
+  Filter,
+  Search,
+  ExternalLink,
+  ChevronDown,
+  Layers,
+  ArrowRight
+} from 'lucide-react'
 import axiosClient from '../api/axiosClient'
+import {
+  Card,
+  CardHeader,
+  Button,
+  Badge,
+  DataTable,
+  Modal,
+  Input,
+  Select,
+  StatCard,
+  Skeleton
+} from '../components/common'
 
 export default function InstitutionPortal() {
-  // Institution and programme state
   const [institutions, setInstitutions] = useState([])
   const [selectedInstId, setSelectedInstId] = useState('')
   const [students, setStudents] = useState([])
   const [programmes, setProgrammes] = useState([])
-  // Per-programme enrollment counts for real utilization bar (T9)
   const [enrollmentCounts, setEnrollmentCounts] = useState({})
 
   // UI state
-  const [filterStatus, setFilterStatus] = useState('flagged') // 'all', 'flagged', 'validated', 'submitted'
+  const [filterStatus, setFilterStatus] = useState('flagged')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
@@ -38,29 +47,20 @@ export default function InstitutionPortal() {
   const [savingRow, setSavingRow] = useState(false)
   const [submittingBatch, setSubmittingBatch] = useState(false)
   const [batchSuccessMessage, setBatchSuccessMessage] = useState('')
-  const [instStats, setInstStats] = useState(null)
 
-  // Load institutions list on mount
   useEffect(() => {
     loadInstitutions()
   }, [])
 
-  // Reload data whenever institution or filter status changes
   useEffect(() => {
     if (selectedInstId) {
       loadInstitutionData(selectedInstId)
     }
   }, [selectedInstId, filterStatus])
 
-  /**
-   * T6 FIX: Backend returns paginated response { total, page, page_size, items }.
-   * Old code: setInstitutions(res.data || [])   → would set the pagination wrapper
-   * New code: setInstitutions(res.data?.items || []) → correctly extracts the array
-   */
   const loadInstitutions = async () => {
     try {
       const res = await axiosClient.get('/api/v1/institutions')
-      // T6: unwrap paginated response .items
       const list = res.data?.items || []
       setInstitutions(list)
       if (list.length > 0) {
@@ -71,17 +71,9 @@ export default function InstitutionPortal() {
     }
   }
 
-  /**
-   * Load all data for the selected institution:
-   * - students with optional status filter
-   * - programmes with real intake numbers
-   * - institution-level stats (total enrolled per programme via students list)
-   */
   const loadInstitutionData = async (instId) => {
     setLoading(true)
     try {
-      // T7 FIX: programmes endpoint also returns paginated {items: [...]}
-      // T8 FIX: students endpoint uses page_size (not limit), unwrap .items
       const [studRes, progRes] = await Promise.all([
         axiosClient.get(
           `/api/v1/students?institution_id=${instId}&page_size=100${filterStatus !== 'all' ? `&record_status=${filterStatus}` : ''}`
@@ -89,16 +81,12 @@ export default function InstitutionPortal() {
         axiosClient.get(`/api/v1/programmes?institution_id=${instId}&page_size=50`)
       ])
 
-      // T8: unwrap paginated students response
       const studentList = studRes.data?.items || []
       setStudents(studentList)
 
-      // T7: unwrap paginated programmes response
       const progList = progRes.data?.items || []
       setProgrammes(progList)
 
-      // T9: Calculate real enrollment counts per programme for utilization bars
-      // Load ALL students (not filtered) to get accurate intake counts
       if (filterStatus !== 'all') {
         try {
           const allStudRes = await axiosClient.get(
@@ -119,16 +107,11 @@ export default function InstitutionPortal() {
     }
   }
 
-  /**
-   * T9: Compute per-programme enrollment counts from students list.
-   * Returns { [programme_id]: count } map used for progress bar %.
-   */
   const computeEnrollmentCounts = (studentList, progList) => {
     const counts = {}
-    progList.forEach(p => { counts[p.id] = 0 })
-    studentList.forEach(s => {
+    progList.forEach((p) => { counts[p.id] = 0 })
+    studentList.forEach((s) => {
       if (s.programme_id && counts[s.programme_id] !== undefined) {
-        // Count only active/submitted students (not withdrawn/transferred)
         if (['validated', 'submitted', 'draft'].includes(s.record_status)) {
           counts[s.programme_id] = (counts[s.programme_id] || 0) + 1
         }
@@ -137,11 +120,6 @@ export default function InstitutionPortal() {
     setEnrollmentCounts(counts)
   }
 
-  /**
-   * Handle CSV/Excel batch upload.
-   * Sends file as multipart/form-data to /api/v1/batches/upload.
-   * On success, reloads institution data to reflect new students.
-   */
   const handleFileUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
@@ -151,27 +129,27 @@ export default function InstitutionPortal() {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('institution_id', selectedInstId)
+    if (programmes && programmes.length > 0) {
+      formData.append('programme_id', programmes[0].id)
+      if (programmes[0].academic_year) {
+        formData.append('academic_year', programmes[0].academic_year)
+      }
+    }
 
     try {
       const res = await axiosClient.post('/api/v1/batches/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       setUploadResult(res.data)
-      // Refresh table to show newly ingested students
       loadInstitutionData(selectedInstId)
     } catch (err) {
       alert(err.response?.data?.detail || 'Upload failed')
     } finally {
       setUploading(false)
-      // Reset file input so same file can be re-uploaded after correction
       e.target.value = ''
     }
   }
 
-  /**
-   * Open the inline correction modal for a specific student row.
-   * Pre-fills the form with the student's current data.
-   */
   const openEditModal = (student) => {
     setEditingStudent(student)
     setEditFormData({
@@ -188,19 +166,12 @@ export default function InstitutionPortal() {
     })
   }
 
-  /**
-   * Save corrected student data via PATCH /api/v1/students/{id}.
-   * Backend (T3 fix) now handles PATCH on the students route.
-   * After saving, reloads institution data to trigger re-render with updated status.
-   */
   const handleSaveCorrection = async () => {
     if (!editingStudent) return
     setSavingRow(true)
     try {
-      // T3 BACKEND FIX: /api/v1/students/{id} now has a PATCH handler
       await axiosClient.patch(`/api/v1/students/${editingStudent.id}`, editFormData)
       setEditingStudent(null)
-      // Reload to pick up new record_status after revalidation
       loadInstitutionData(selectedInstId)
     } catch (err) {
       alert(err.response?.data?.detail || 'Correction failed')
@@ -209,19 +180,11 @@ export default function InstitutionPortal() {
     }
   }
 
-  /**
-   * Submit the latest batch for this institution to AICTE.
-   * Calls GET /batches?institution_id= first to find the latest batch ID,
-   * then POST /batches/{id}/submit.
-   * Backend enforces: batch cannot be submitted if error_rows > 0.
-   */
   const handleSubmitBatch = async () => {
     setSubmittingBatch(true)
     setBatchSuccessMessage('')
     try {
-      // Find the most recent batch for this institution
       const bRes = await axiosClient.get(`/api/v1/batches?institution_id=${selectedInstId}`)
-      // T6: batches endpoint also returns paginated response
       const batches = bRes.data?.items || bRes.data || []
       if (!batches || batches.length === 0) {
         alert('No upload batch found to submit')
@@ -229,427 +192,430 @@ export default function InstitutionPortal() {
       }
       const batchId = batches[0].id
       await axiosClient.post(`/api/v1/batches/${batchId}/submit`)
-      setBatchSuccessMessage('✅ Batch successfully submitted to AICTE Central Repository! All records are now verified and locked.')
+      setBatchSuccessMessage('✅ Batch successfully submitted to AICTE Central Repository! All records are verified and locked.')
       loadInstitutionData(selectedInstId)
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to submit batch')
+      alert(err.response?.data?.detail || 'Batch submission failed. Ensure all flagged errors are resolved first.')
     } finally {
       setSubmittingBatch(false)
     }
   }
 
-  const currentInst = institutions.find((i) => i.id === selectedInstId)
-
-  /**
-   * T9: Calculate utilization % for a programme.
-   * Uses real enrolled count vs (approved_intake + supernumerary_quota).
-   * Returns % clamped at 0-100 and color class for the progress bar.
-   */
-  const getIntakeUtilization = (programme) => {
-    const enrolled = enrollmentCounts[programme.id] || 0
-    const totalCap = (programme.approved_intake || 0) + (programme.supernumerary_quota || 0)
-    if (totalCap === 0) return { pct: 0, color: 'bg-emerald-500', label: '0%' }
-    const pct = Math.min(Math.round((enrolled / totalCap) * 100), 100)
-    let color = 'bg-emerald-500'
-    if (pct >= 100) color = 'bg-rose-500'
-    else if (pct >= 90) color = 'bg-amber-500'
-    else if (pct >= 75) color = 'bg-indigo-500'
-    return { pct, color, enrolled, totalCap, label: `${pct}%` }
+  const getRecordStatusBadgeVariant = (status) => {
+    switch (status) {
+      case 'validated': return 'success'
+      case 'submitted': return 'info'
+      case 'flagged': return 'danger'
+      default: return 'warning'
+    }
   }
+
+  const selectedInstitution = institutions.find((i) => i.id === selectedInstId)
+
+  // Columns for student data table
+  const columns = [
+    {
+      title: 'Roll / Student ID',
+      key: 'student_institution_id',
+      render: (val) => <span className="font-mono font-bold text-xs">{val || '—'}</span>
+    },
+    {
+      title: 'Full Name',
+      key: 'full_name',
+      render: (val) => <span className="font-bold text-slate-900 dark:text-white">{val}</span>
+    },
+    {
+      title: 'Masked APAAR ID',
+      key: 'apaar_id',
+      render: (val) => (
+        <span className="font-mono text-xs text-blue-700 dark:text-blue-400">
+          {val ? `${val.slice(0, 4)}••••${val.slice(-4)}` : '—'}
+        </span>
+      )
+    },
+    {
+      title: 'Category',
+      key: 'category',
+      render: (val, row) => (
+        <span className="text-xs uppercase font-semibold">
+          {val || 'General'}
+          {row.is_nri && <span className="ml-1 text-[10px] text-purple-600 font-bold">(NRI)</span>}
+          {row.is_supernumerary && <span className="ml-1 text-[10px] text-amber-600 font-bold">(SN)</span>}
+        </span>
+      )
+    },
+    {
+      title: 'Record Status',
+      key: 'record_status',
+      render: (val) => (
+        <Badge variant={getRecordStatusBadgeVariant(val)} size="xs" dot>
+          {val || 'draft'}
+        </Badge>
+      )
+    },
+    {
+      title: 'Action',
+      key: 'action',
+      align: 'right',
+      render: (_, row) => (
+        <Button
+          variant="secondary"
+          size="xs"
+          onClick={() => openEditModal(row)}
+          icon={Edit3}
+        >
+          {row.record_status === 'flagged' ? 'Resolve' : 'Edit'}
+        </Button>
+      )
+    }
+  ]
 
   return (
     <div className="space-y-8 pb-12">
-
-      {/* ─── Institution Selector & Banner ─── */}
-      <div className="rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950 p-6 text-white shadow-xl">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <span className="rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-300 border border-indigo-500/30">
-              Institution Portal · Ingestion Engine
-            </span>
-            <h1 className="mt-2 text-2xl font-black text-white sm:text-3xl">
-              {currentInst?.name || 'Institution Management'}
-            </h1>
-            <p className="mt-1 text-sm text-slate-300">
-              AICTE Code: <span className="font-mono text-indigo-200">{currentInst?.aicte_code}</span>
-              {currentInst?.state && ` · ${currentInst.state}, India`}
-            </p>
+      
+      {/* Header & Institution Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/60 dark:text-blue-300 mb-1.5">
+            <Building2 className="h-3.5 w-3.5" />
+            <span>AICTE Institute Operations</span>
           </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
+            Admissions, Intake & Batch Validation
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Ingest student rosters, resolve row-level validation findings inline, and submit verified batches to AICTE.
+          </p>
+        </div>
 
-          {/* Institution Switcher — populated from /api/v1/institutions */}
-          <div className="flex flex-col sm:flex-row gap-2">
+        {/* Institution selector */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            Institution:
+          </label>
+          <div className="relative">
             <select
               value={selectedInstId}
               onChange={(e) => setSelectedInstId(e.target.value)}
-              className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="appearance-none rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-1.5 pr-8 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
-              {institutions.map((inst) => (
-                <option key={inst.id} value={inst.id} className="text-slate-900">
-                  {inst.name} ({inst.aicte_code})
+              {institutions.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
                 </option>
               ))}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           </div>
         </div>
       </div>
 
-      {/* ─── Programme Intake Utilization Progress Meters (T9: Real data) ─── */}
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm animate-pulse">
-              <div className="h-4 w-3/4 bg-slate-200 rounded mb-3" />
-              <div className="h-3 w-1/2 bg-slate-100 rounded mb-4" />
-              <div className="h-2 w-full bg-slate-100 rounded" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Programme Intake Utilization Strip */}
+      <Card>
+        <CardHeader
+          title="Sanctioned Intake Utilization"
+          subtitle={`Live verified student enrolments vs AICTE sanctioned seats for ${selectedInstitution?.name || 'College'}`}
+        />
+        
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {programmes.map((p) => {
-            // T9: calculate real utilization from enrollment counts
-            const util = getIntakeUtilization(p)
+            const enrolled = enrollmentCounts[p.id] || 0
+            const maxIntake = p.approved_intake || 1
+            const pct = Math.min(Math.round((enrolled / maxIntake) * 100), 100)
+            const isExceeded = enrolled > p.approved_intake
+
             return (
-              <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between">
+              <div
+                key={p.id}
+                className="rounded-xl border border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-850"
+              >
+                <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-tight">{p.name}</h3>
-                    <p className="text-[11px] text-slate-500">Session {p.academic_year}</p>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                      {p.name}
+                    </h4>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      Session {p.academic_year || '2025-26'}
+                    </span>
                   </div>
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-bold text-slate-700">
-                    Cap: {util.totalCap}
-                  </span>
+                  <Badge variant={isExceeded ? 'danger' : pct > 90 ? 'warning' : 'success'} size="xs">
+                    {pct}%
+                  </Badge>
                 </div>
 
-                <div className="mt-4 space-y-1.5">
-                  <div className="flex justify-between text-xs font-medium text-slate-600">
-                    <span>Approved Intake</span>
-                    <span className="font-bold">{p.approved_intake} seats</span>
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-[11px] mb-1 font-semibold text-slate-600 dark:text-slate-400">
+                    <span>Enrolled: <strong className="text-slate-900 dark:text-white">{enrolled}</strong></span>
+                    <span>Cap: {p.approved_intake}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>NRI: {p.nri_quota} · OCI: {p.oci_quota} · FN: {p.fn_quota}</span>
-                    <span>+{p.supernumerary_quota} sup</span>
-                  </div>
-                  {/* T9: Real utilization bar — was hardcoded 85% before */}
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-2 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${util.color}`}
-                      style={{ width: `${util.pct}%` }}
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        isExceeded ? 'bg-rose-500' : pct > 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
                     />
-                  </div>
-                  <div className="flex justify-between text-[11px] font-semibold">
-                    <span className="text-slate-500">
-                      {util.enrolled !== undefined ? `${util.enrolled} enrolled` : 'Loading...'}
-                    </span>
-                    <span className={util.pct >= 100 ? 'text-rose-600' : util.pct >= 90 ? 'text-amber-600' : 'text-indigo-600'}>
-                      {util.label} utilized
-                    </span>
                   </div>
                 </div>
               </div>
             )
           })}
         </div>
-      )}
+      </Card>
 
-      {/* ─── Upload Studio Card ─── */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Batch Student Data Ingestion (CSV / Excel)</h2>
-            <p className="text-xs text-slate-500">
-              Upload admissions list. Engine checks APAAR format, mock registry, duplicates, and quotas.
-            </p>
+      {/* CSV / Excel Ingestion Dropzone */}
+      <Card>
+        <CardHeader
+          title="Upload Student Admission Batch"
+          subtitle="Support CSV or Excel format containing APAAR IDs, category claims, and student identifiers"
+        />
+
+        <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40 p-8 text-center hover:border-blue-500 dark:hover:border-blue-400 transition-colors">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 mb-3 shadow-xs">
+            <UploadCloud className="h-7 w-7" />
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="cursor-pointer flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 transition">
-              <span>{uploading ? '⏳ Processing File...' : '📁 Upload Admissions CSV'}</span>
-              <input
-                type="file"
-                accept=".csv, .xlsx, .xls"
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className="hidden"
-              />
-            </label>
-          </div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            Drag and drop your roster file, or browse
+          </h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Accepts .csv, .xlsx (Max 10,000 records per batch)
+          </p>
+
+          <label className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-800 transition cursor-pointer">
+            <span>{uploading ? 'Parsing & Ingesting…' : 'Select Batch File'}</span>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileUpload}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
         </div>
 
-        {/* Upload Status Alert */}
+        {/* Upload feedback summary */}
         {uploadResult && (
-          <div className={`mt-4 rounded-xl p-4 border text-xs ${
-            uploadResult.status === 'validated'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-amber-50 border-amber-200 text-amber-900'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm">
-                {uploadResult.status === 'validated' ? '✅ Batch Validated Cleanly!' : '⚠️ Validation Findings Detected!'}
-              </span>
-              <span className="font-mono text-xs">{uploadResult.file_name}</span>
-            </div>
-            <div className="mt-2 flex gap-4 text-xs">
-              <span>Total: <strong>{uploadResult.total_rows}</strong></span>
-              <span className="text-emerald-700">Valid: <strong>{uploadResult.valid_rows}</strong></span>
-              <span className="text-rose-700">Errors: <strong>{uploadResult.error_rows}</strong></span>
-              <span className="text-amber-700">Warnings: <strong>{uploadResult.warning_rows}</strong></span>
+          <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/40">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                    Batch Processed Successfully: {uploadResult.file_name}
+                  </h4>
+                  <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300 mt-0.5">
+                    Total: {uploadResult.total_rows} · Valid: {uploadResult.valid_rows} · Flagged Errors: {uploadResult.error_rows}
+                  </p>
+                </div>
+              </div>
+
+              {uploadResult.batch_id && (
+                <Link
+                  to={`/institution/batches/${uploadResult.batch_id}/findings`}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 underline"
+                >
+                  <span>View Findings</span>
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              )}
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* ─── Row-Level Error Correction Studio ─── */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+      {/* Student Records Table Section */}
+      <Card>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Row-Level Error Correction Studio</h2>
-            <p className="text-xs text-slate-500">
-              Fix flagged rows inline. Instantaneous re-validation updates badge without re-uploading entire file.
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              Student Records & Exception Queue
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Review flagged errors, perform inline corrections, and confirm verified records.
             </p>
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center rounded-lg bg-slate-100 p-1 text-xs font-semibold">
-            <button
-              onClick={() => setFilterStatus('flagged')}
-              className={`rounded-md px-3 py-1.5 transition ${filterStatus === 'flagged' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
-            >
-              ⚠️ Flagged ({students.filter((s) => s.record_status === 'flagged').length})
-            </button>
-            <button
-              onClick={() => setFilterStatus('all')}
-              className={`rounded-md px-3 py-1.5 transition ${filterStatus === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
-            >
-              All Records
-            </button>
-            <button
-              onClick={() => setFilterStatus('submitted')}
-              className={`rounded-md px-3 py-1.5 transition ${filterStatus === 'submitted' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'}`}
-            >
-              ✓ Submitted
-            </button>
+          <div className="inline-flex gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
+            {[
+              { id: 'flagged', label: 'Flagged Errors' },
+              { id: 'validated', label: 'Validated' },
+              { id: 'submitted', label: 'Submitted' },
+              { id: 'all', label: 'All Records' }
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFilterStatus(f.id)}
+                className={`rounded-lg px-3 py-1 text-xs font-semibold transition cursor-pointer ${
+                  filterStatus === f.id
+                    ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-900 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Success banner after batch submit */}
+        <DataTable
+          columns={columns}
+          data={students}
+          loading={loading}
+          emptyMessage={`No ${filterStatus} student records found for this institution.`}
+        />
+
+        {/* Submit to AICTE Action Bar */}
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-blue-50/70 border border-blue-200/80 dark:bg-blue-950/40 dark:border-blue-900/60">
+          <div>
+            <h4 className="text-xs font-bold text-blue-950 dark:text-blue-200">
+              Ready to Submit Verified Batch to AICTE?
+            </h4>
+            <p className="text-[11px] text-blue-900/80 dark:text-blue-300 mt-0.5">
+              Submitting locks records and publishes authentic enrolments to the national repository.
+            </p>
+          </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Send}
+            loading={submittingBatch}
+            onClick={handleSubmitBatch}
+          >
+            Submit Batch to Central Repository
+          </Button>
+        </div>
+
         {batchSuccessMessage && (
-          <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs font-bold text-emerald-800">
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300">
             {batchSuccessMessage}
           </div>
         )}
+      </Card>
 
-        {/* Student Records Table */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 font-semibold uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Roll No</th>
-                <th className="px-4 py-3">Student Name</th>
-                <th className="px-4 py-3">APAAR ID</th>
-                <th className="px-4 py-3">Programme</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center">
-                    <div className="flex justify-center items-center gap-2 text-slate-400">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-                      Loading student records...
-                    </div>
-                  </td>
-                </tr>
-              ) : students.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="px-4 py-8 text-center text-slate-400 italic">
-                    No student records found matching this filter.
-                  </td>
-                </tr>
-              ) : (
-                students.map((student) => {
-                  const isFlagged = student.record_status === 'flagged'
-                  return (
-                    <tr key={student.id} className={isFlagged ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-slate-50/60'}>
-                      <td className="px-4 py-3 font-mono font-bold text-slate-900">{student.student_institution_id}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">{student.full_name}</td>
-                      <td className="px-4 py-3 font-mono">
-                        {student.apaar_id ? (
-                          <span className="flex items-center gap-1 font-semibold text-slate-800">
-                            {/* Show masked APAAR from apaar_id_masked field — raw APAAR never shown */}
-                            {student.apaar_id_masked || student.apaar_id}
-                            <span className={`text-[10px] px-1.5 rounded font-bold ${
-                              student.registry_status === 'VALID' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                            }`}>
-                              {student.registry_status || 'PENDING'}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-rose-600 font-bold">MISSING</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">{student.programmes?.name || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className="capitalize font-medium">{student.category}</span>
-                        {student.is_nri && <span className="ml-1 text-[10px] bg-indigo-100 text-indigo-700 px-1 rounded">NRI</span>}
-                        {student.is_supernumerary && <span className="ml-1 text-[10px] bg-purple-100 text-purple-700 px-1 rounded">SUP</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2 py-0.5 font-bold uppercase text-[10px] border ${
-                          isFlagged
-                            ? 'bg-amber-100 text-amber-800 border-amber-300'
-                            : student.record_status === 'submitted'
-                            ? 'bg-blue-100 text-blue-800 border-blue-300'
-                            : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                        }`}>
-                          {student.record_status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {/* Only allow editing non-submitted records */}
-                        {student.record_status !== 'submitted' ? (
-                          <button
-                            onClick={() => openEditModal(student)}
-                            className="rounded-md bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition"
-                          >
-                            ✏️ Correct Row
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 font-medium">🔒 Locked</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Submit to AICTE Action Button */}
-        <div className="mt-6 flex justify-between items-center border-t border-slate-100 pt-4">
-          <p className="text-xs text-slate-500">
-            Submit validated student records to AICTE Central Repository once all errors are cleared.
-          </p>
-          <button
-            onClick={handleSubmitBatch}
-            disabled={submittingBatch}
-            className="rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-md hover:bg-slate-800 transition disabled:opacity-60"
-          >
-            {submittingBatch ? '⏳ Submitting to AICTE...' : '🚀 Submit Clean Batch to AICTE'}
-          </button>
-        </div>
-      </div>
-
-      {/* ─── Row-Level Inline Correction Modal ─── */}
+      {/* Inline Correction Modal */}
       {editingStudent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b pb-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Row Correction: {editingStudent.full_name}
-                </h3>
-                <p className="text-xs text-slate-500">Roll No: {editingStudent.student_institution_id}</p>
-              </div>
-              <button onClick={() => setEditingStudent(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
-              {/* APAAR ID correction field */}
-              <div>
-                <label className="font-semibold text-slate-700">12-Digit APAAR ID</label>
-                <input
-                  type="text"
-                  maxLength={12}
-                  value={editFormData.apaar_id}
-                  onChange={(e) => setEditFormData({ ...editFormData, apaar_id: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-mono text-sm focus:border-indigo-500 focus:outline-none"
-                  placeholder="e.g. 901043321819"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700">Student Full Name</label>
-                <input
-                  type="text"
-                  value={editFormData.full_name}
-                  onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700">Admission Date</label>
-                <input
-                  type="date"
-                  value={editFormData.admission_date}
-                  onChange={(e) => setEditFormData({ ...editFormData, admission_date: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:border-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700">Category</label>
-                <select
-                  value={editFormData.category}
-                  onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-sm focus:border-indigo-500 focus:outline-none"
-                >
-                  <option value="general">General</option>
-                  <option value="obc">OBC</option>
-                  <option value="sc">SC</option>
-                  <option value="st">ST</option>
-                  <option value="ews">EWS</option>
-                  <option value="management">Management</option>
-                  <option value="nri">NRI</option>
-                  <option value="oci">OCI</option>
-                  <option value="foreign_national">Foreign National</option>
-                </select>
-              </div>
-
-              {/* Boolean flag checkboxes */}
-              <div className="col-span-2 flex flex-wrap gap-4 pt-2">
-                {[
-                  ['is_nri', 'Is NRI'],
-                  ['is_oci', 'Is OCI'],
-                  ['is_foreign_national', 'Is Foreign National'],
-                  ['is_supernumerary', 'Supernumerary Seat']
-                ].map(([field, label]) => (
-                  <label key={field} className="flex items-center gap-2 font-medium">
-                    <input
-                      type="checkbox"
-                      checked={editFormData[field]}
-                      onChange={(e) => setEditFormData({ ...editFormData, [field]: e.target.checked })}
-                      className="rounded border-slate-300"
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2 border-t pt-4">
-              <button
+        <Modal
+          isOpen={Boolean(editingStudent)}
+          onClose={() => setEditingStudent(null)}
+          title={`Correct Student Record: ${editingStudent.full_name}`}
+          description={`Student ID: ${editingStudent.student_institution_id} · Update fields to re-validate against AICTE rules.`}
+          footer={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setEditingStudent(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                loading={savingRow}
                 onClick={handleSaveCorrection}
-                disabled={savingRow}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
               >
-                {savingRow ? '⏳ Re-validating...' : '⚡ Save & Re-validate'}
-              </button>
+                Save & Revalidate
+              </Button>
+            </div>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2 text-xs">
+            <Input
+              label="Student Full Name"
+              required
+              value={editFormData.full_name || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, full_name: e.target.value })}
+            />
+
+            <Input
+              label="Roll / Institution ID"
+              required
+              value={editFormData.student_institution_id || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, student_institution_id: e.target.value })}
+            />
+
+            <Input
+              label="APAAR ID (12 Digits)"
+              required
+              value={editFormData.apaar_id || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, apaar_id: e.target.value })}
+            />
+
+            <Input
+              label="Date of Birth"
+              type="date"
+              value={editFormData.dob || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, dob: e.target.value })}
+            />
+
+            <Input
+              label="Admission Date"
+              type="date"
+              value={editFormData.admission_date || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, admission_date: e.target.value })}
+            />
+
+            <Select
+              label="Category"
+              value={editFormData.category || 'general'}
+              onChange={(e) => setEditFormData({ ...editFormData, category: e.target.value })}
+              options={[
+                ['general', 'General'],
+                ['obc', 'OBC'],
+                ['sc', 'SC'],
+                ['st', 'ST'],
+                ['ews', 'EWS']
+              ]}
+            />
+
+            <div className="sm:col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <label className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editFormData.is_nri)}
+                  onChange={(e) => setEditFormData({ ...editFormData, is_nri: e.target.checked })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>NRI Quota</span>
+              </label>
+
+              <label className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editFormData.is_oci)}
+                  onChange={(e) => setEditFormData({ ...editFormData, is_oci: e.target.checked })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>OCI</span>
+              </label>
+
+              <label className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editFormData.is_foreign_national)}
+                  onChange={(e) => setEditFormData({ ...editFormData, is_foreign_national: e.target.checked })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Foreign Nat.</span>
+              </label>
+
+              <label className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(editFormData.is_supernumerary)}
+                  onChange={(e) => setEditFormData({ ...editFormData, is_supernumerary: e.target.checked })}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>Supernumerary</span>
+              </label>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
+
     </div>
   )
 }

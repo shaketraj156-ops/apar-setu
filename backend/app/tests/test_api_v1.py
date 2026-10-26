@@ -1,7 +1,19 @@
+import uuid
 from fastapi.testclient import TestClient
 from app.main import app
+from app.api.deps import CurrentUser, get_current_user
 
 client = TestClient(app)
+
+# Provide mock admin auth for integration tests
+mock_user = CurrentUser(
+    id=uuid.UUID("67501ed1-4a83-4a27-9a45-4270b06dea4f"),
+    email="aicte@demo.test",
+    role="aicte_officer",
+    institution_id=None,
+    full_name="Demo AICTE Officer"
+)
+app.dependency_overrides[get_current_user] = lambda: mock_user
 
 def test_health():
     res = client.get("/health")
@@ -35,14 +47,14 @@ def test_list_students():
     res = client.get("/api/v1/students?limit=5")
     assert res.status_code == 200
     data = res.json()
-    assert "students" in data
-    assert len(data["students"]) == 5
+    assert "items" in data
+    assert len(data["items"]) == 5
 
 def test_qr_generation_and_verification():
     # Fetch any student
     s_res = client.get("/api/v1/students?limit=1")
     assert s_res.status_code == 200
-    student = s_res.json()["students"][0]
+    student = s_res.json()["items"][0]
     
     # Generate QR
     qr_res = client.post("/api/v1/credentials/qr", json={"record_id": student["id"]})

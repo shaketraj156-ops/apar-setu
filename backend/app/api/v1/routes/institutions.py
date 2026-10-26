@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.schemas.institution import InstitutionRead
 router = APIRouter()
 settings = get_settings()
 
+@router.get("", response_model=PaginatedResponse[InstitutionRead])
 @router.get("/", response_model=PaginatedResponse[InstitutionRead])
 def list_institutions(
     page: int = Query(1, ge=1),

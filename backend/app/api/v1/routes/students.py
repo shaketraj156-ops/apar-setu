@@ -1,5 +1,5 @@
 """
-Students API route — APAARSetu
+Students API route — SNAP
 =================================
 Provides endpoints for:
   - Listing student records (with institution_id filter for AICTE officers, limit/page_size alias for frontend)
@@ -54,6 +54,7 @@ class StudentPatch(BaseModel):
     is_supernumerary: Optional[bool] = None
 
 
+@router.get("", response_model=PaginatedResponse[StudentRecordRead])
 @router.get("/", response_model=PaginatedResponse[StudentRecordRead])
 def list_students(
     # T1: institution_id filter — AICTE officers can filter by specific institution
@@ -63,8 +64,8 @@ def list_students(
     record_status: Optional[str] = None,
     # T2: Accept both `page_size` (canonical) and `limit` (frontend alias)
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=200),
-    limit: Optional[int] = Query(None, ge=1, le=200, description="Alias for page_size (frontend compatibility)"),
+    page_size: int = Query(20, ge=1, le=1000),
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Alias for page_size (frontend compatibility)"),
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -85,6 +86,11 @@ def list_students(
     if user.role in ["institution_admin", "institution_staff"]:
         # JWT-enforced: institution users are hard-locked to their institution
         query = query.where(StudentRecord.institution_id == user.institution_id)
+    elif user.role == "student":
+        # Students only ever see their own record (matched via the APAAR hash on their profile)
+        if not user.apaar_id_hash:
+            return PaginatedResponse(total=0, page=page, page_size=effective_page_size, items=[], students=[])
+        query = query.where(StudentRecord.apaar_id_hash == user.apaar_id_hash)
     elif institution_id:
         # T1: AICTE/auditor roles can optionally filter to a specific institution
         query = query.where(StudentRecord.institution_id == institution_id)
@@ -107,7 +113,7 @@ def list_students(
         data.apaar_id_masked = mask_apaar_id(r.apaar_id)
         items.append(data)
 
-    return PaginatedResponse(total=total, page=page, page_size=effective_page_size, items=items)
+    return PaginatedResponse(total=total, page=page, page_size=effective_page_size, items=items, students=items)
 
 
 @router.get("/{id}", response_model=StudentRecordRead)
@@ -124,7 +130,11 @@ def get_student(
     if not student:
         raise NotFoundError(f"Student record {id} not found")
 
-    check_institution_access(user, student.institution_id)
+    if user.role == "student":
+        if not user.apaar_id_hash or student.apaar_id_hash != user.apaar_id_hash:
+            raise ForbiddenError("Students can only view their own record", code="FORBIDDEN")
+    else:
+        check_institution_access(user, student.institution_id)
 
     data = StudentRecordRead.model_validate(student)
     data.apaar_id_masked = mask_apaar_id(student.apaar_id)
@@ -166,6 +176,16 @@ def patch_student(
 
     # Apply the patch — only update provided fields
     for field, value in payload.model_dump(exclude_unset=True).items():
+        if field in ("dob", "admission_date") and isinstance(value, str):
+            val_str = value.strip()
+            if val_str:
+                try:
+                    from datetime import datetime as dt
+                    value = dt.strptime(val_str, "%Y-%m-%d").date()
+                except Exception:
+                    pass
+            else:
+                value = None
         setattr(student, field, value)
 
     # If APAAR ID was corrected, recompute the SHA-256 hash for DB lookup consistency

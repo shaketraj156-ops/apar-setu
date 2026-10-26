@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select, func
@@ -23,8 +23,10 @@ class StudentPatch(BaseModel):
     is_supernumerary: bool | None = None
     is_nri: bool | None = None
 
+@router.get("", response_model=PaginatedResponse[UploadBatchRead])
 @router.get("/", response_model=PaginatedResponse[UploadBatchRead])
 def list_batches(
+    institution_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: CurrentUser = Depends(get_current_user),
@@ -33,6 +35,8 @@ def list_batches(
     query = select(UploadBatch).order_by(UploadBatch.created_at.desc())
     if user.role in ["institution_admin", "institution_staff"]:
         query = query.where(UploadBatch.institution_id == user.institution_id)
+    elif institution_id:
+        query = query.where(UploadBatch.institution_id == institution_id)
 
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     items = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
@@ -41,12 +45,18 @@ def list_batches(
         items=[UploadBatchRead.model_validate(b) for b in items]
     )
 
+from app.api.v1.routes.uploads import upload_csv
+router.post("/upload", response_model=UploadBatchRead, status_code=201)(upload_csv)
+
 @router.get("/{id}", response_model=UploadBatchRead)
 def get_batch(id: uuid.UUID, user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     batch = db.get(UploadBatch, id)
     if not batch: raise NotFoundError("Batch not found")
     check_institution_access(user, batch.institution_id)
-    return UploadBatchRead.model_validate(batch)
+    findings = db.scalars(select(ValidationFinding).where(ValidationFinding.batch_id == id)).all()
+    batch_read = UploadBatchRead.model_validate(batch)
+    batch_read.findings = [FindingRead.model_validate(f) for f in findings]
+    return batch_read
 
 @router.get("/{id}/findings", response_model=PaginatedResponse[FindingRead])
 def get_batch_findings(
@@ -99,7 +109,10 @@ def revalidate_batch_endpoint(
     if not batch: raise NotFoundError("Batch not found")
     check_institution_access(user, batch.institution_id)
     updated = revalidate_batch_service(db, id)
-    return UploadBatchRead.model_validate(updated)
+    findings = db.scalars(select(ValidationFinding).where(ValidationFinding.batch_id == id)).all()
+    batch_read = UploadBatchRead.model_validate(updated)
+    batch_read.findings = [FindingRead.model_validate(f) for f in findings]
+    return batch_read
 
 @router.post("/{id}/submit")
 def submit_batch(

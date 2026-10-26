@@ -1,4 +1,4 @@
--- APAARSetu — 003 reporting & analytics views (run after migrations 001, 002)
+-- SNAP — 003 reporting & analytics views (run after migrations 001, 002)
 -- security_invoker = on so RLS of the caller applies (institution users still see only their rows).
 
 -- Intake utilisation per programme

@@ -1,4 +1,4 @@
--- APAARSetu — 002 Row Level Security
+-- SNAP — 002 Row Level Security
 -- Principle: institution users see only their institution_id; students see only their own records;
 -- AICTE/auditor/system_admin read nationally; verifiers never read raw student_records
 -- (they go through the backend verification API using the service role).

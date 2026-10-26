@@ -1,6 +1,6 @@
-# ApaarSetu
+# SNAP — Student Network & APAAR Portal
 
-APAARSetu is a starter monorepo for an APAAR ID-based student data management and verification platform for AICTE-approved institutions.This repository contains the initial app shells, health endpoints,synthetic registry data, and documentation placeholders. It does not yet implement the full product.
+SNAP (Student Network & APAAR Portal) is a starter monorepo for an APAAR ID-based student data management and verification platform for AICTE-approved institutions.This repository contains the initial app shells, health endpoints,synthetic registry data, and documentation placeholders. It does not yet implement the full product.
 
 ## Tech stack
 
@@ -34,7 +34,7 @@ apaarsetu/
 │   │   ├── pages/                 # Reserved for auth, institution, AICTE, student, and verifier screens
 │   │   ├── routes/                # Reserved for route definitions and guards
 │   │   ├── utils/                 # Reserved for frontend helper functions
-│   │   ├── App.jsx                # Current starter screen: “APAARSetu is running”
+│   │   ├── App.jsx                # Current starter screen: “SNAP is running”
 │   │   ├── main.jsx               # Vite entry point; mounts React App and global CSS
 │   │   └── index.css              # Tailwind import and base page styles
 │   ├── .env.example               # Names of the frontend's local environment settings
@@ -152,7 +152,7 @@ The repository owner creates and pushes `main`, then each developer clones the r
 
 ```bash
 git add .
-git commit -m "Initialize APAARSetu monorepo"
+git commit -m "Initialize SNAP monorepo"
 git branch -M main
 git remote add origin <repository-url>
 git push -u origin main
@@ -166,7 +166,7 @@ cd apaarsetu
 git switch -c dev/<your-name>
 ```
 
-# ApaarSetu
+# SNAP
 
 ...
 
@@ -211,5 +211,5 @@ A one-click demo (Institution Admin, AICTE Officer, Student, Verifier) can be en
   aicte@demo.test
   student@demo.test
   verifier@demo.test
-  password: 4pGdDa7NG10RFG
+  password: password123
   

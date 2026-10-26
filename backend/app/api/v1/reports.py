@@ -155,5 +155,5 @@ def export_report(
         data = export_excel(rows, title=name.title(), date_from=date_from, date_to=date_to)
         return Response(content=data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={name}_report.xlsx"})
     elif format == "pdf":
-        data = export_pdf(rows, title=f"APAARSetu {name.title()} Report", date_from=date_from, date_to=date_to)
+        data = export_pdf(rows, title=f"SNAP {name.title()} Report", date_from=date_from, date_to=date_to)
         return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f"attachment; filename={name}_report.pdf"})

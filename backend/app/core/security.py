@@ -32,21 +32,28 @@ def decode_access_token(token: str) -> dict[str, Any]:
     if token.startswith("Bearer "):
         token = token[7:].strip()
 
-    # Strategy 1: JWKS asymmetric validation
-    try:
-        jwks = get_jwks_client()
-        signing_key = jwks.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256", "ES256"],
-            audience=settings.SUPABASE_JWT_AUDIENCE,
-            issuer=settings.supabase_issuer,
-            options={"verify_exp": True}
-        )
-        return payload
-    except (PyJWKClientError, jwt.InvalidTokenError):
-        pass
+    # Strategy 1: JWKS asymmetric validation (retry once: a cold or flaky JWKS fetch must not log users out)
+    global _jwks_client
+    for attempt in range(2):
+        try:
+            jwks = get_jwks_client()
+            signing_key = jwks.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256", "ES256"],
+                audience=settings.SUPABASE_JWT_AUDIENCE,
+                issuer=settings.supabase_issuer,
+                leeway=60,  # tolerate small clock skew between this machine and Supabase
+                options={"verify_exp": True}
+            )
+            return payload
+        except PyJWKClientError as e:
+            log.warning(f"JWKS lookup failed (attempt {attempt + 1}): {e}")
+            _jwks_client = None  # rebuild the client (drops a bad cache) and retry
+        except jwt.InvalidTokenError as e:
+            log.warning(f"JWT rejected: {type(e).__name__}: {e}")
+            break
 
     # Strategy 2: HS256 secret fallback
     if settings.SUPABASE_JWT_SECRET:
@@ -56,6 +63,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
                 settings.SUPABASE_JWT_SECRET,
                 algorithms=["HS256"],
                 audience=settings.SUPABASE_JWT_AUDIENCE,
+                leeway=60,
                 options={"verify_exp": True, "verify_iss": False}
             )
             return payload

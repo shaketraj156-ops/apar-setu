@@ -1,4 +1,4 @@
-﻿# APAARSetu Backend - 7-Minute Live Hackathon Demo Script
+﻿# SNAP Backend - 7-Minute Live Hackathon Demo Script
 
 ### Minute 1: System Health and Swagger Architecture
 * URL: http://localhost:8000/docs

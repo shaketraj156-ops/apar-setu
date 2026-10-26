@@ -48,7 +48,7 @@ def export_excel(rows, title="Report", filters=None, date_field=None, date_from=
     return buf.getvalue()
 
 
-def export_pdf(rows, title="APAARSetu Report", filters=None, date_field=None, date_from=None, date_to=None) -> bytes:
+def export_pdf(rows, title="SNAP Report", filters=None, date_field=None, date_from=None, date_to=None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import getSampleStyleSheet

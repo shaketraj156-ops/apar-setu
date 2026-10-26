@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy import select
@@ -18,18 +18,29 @@ router = APIRouter()
 
 @router.post("/csv", response_model=UploadBatchRead, status_code=201)
 def upload_csv(
-    programme_id: uuid.UUID = Form(...),
-    academic_year: str = Form(...),
     file: UploadFile = File(...),
+    programme_id: uuid.UUID | None = Form(None),
+    academic_year: str | None = Form(None),
+    institution_id: uuid.UUID | None = Form(None),
     user: CurrentUser = Depends(require_role(["institution_admin", "system_admin"])),
     db: Session = Depends(get_db)
 ):
-    target_inst = user.institution_id
+    target_inst = user.institution_id or institution_id
     if not target_inst:
         raise UnprocessableError("Institution ID is required")
-    prog = db.get(Programme, programme_id)
-    if not prog or prog.institution_id != target_inst:
-        raise NotFoundError("Programme not found for your institution")
+    
+    if programme_id:
+        prog = db.get(Programme, programme_id)
+        if not prog or prog.institution_id != target_inst:
+            raise NotFoundError("Programme not found for your institution")
+    else:
+        prog = db.scalars(select(Programme).where(Programme.institution_id == target_inst)).first()
+        if not prog:
+            raise NotFoundError("No programmes configured for your institution")
+        programme_id = prog.id
+
+    if not academic_year:
+        academic_year = prog.academic_year or "2026-30"
 
     content = file.file.read()
     rows = parse_csv_stream(content)
@@ -133,4 +144,7 @@ def upload_csv(
 
     db.commit()
     db.refresh(batch)
-    return UploadBatchRead.model_validate(batch)
+    findings = db.scalars(select(ValidationFinding).where(ValidationFinding.batch_id == batch.id)).all()
+    batch_read = UploadBatchRead.model_validate(batch)
+    batch_read.findings = [FindingRead.model_validate(f) for f in findings]
+    return batch_read

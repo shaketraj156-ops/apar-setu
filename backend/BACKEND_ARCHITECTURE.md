@@ -1,4 +1,4 @@
-# APAARSetu Backend: Complete Architecture & System Deep-Dive
+# SNAP Backend: Complete Architecture & System Deep-Dive
 **Document Type:** Technical Architecture, File Breakdown & Presentation Guide  
 **Target Audience:** Hackathon Team Members, Judges & Technical Evaluators  
 **Language:** Simple & Professional Hinglish  

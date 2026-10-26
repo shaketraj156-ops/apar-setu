@@ -15,6 +15,7 @@ from app.services.audit import log_action
 router = APIRouter()
 
 
+@router.get("", response_model=PaginatedResponse[ProgrammeRead])
 @router.get("/", response_model=PaginatedResponse[ProgrammeRead])
 def list_programmes(
     institution_id: uuid.UUID | None = None,
