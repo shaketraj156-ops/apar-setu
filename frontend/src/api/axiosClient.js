@@ -1,8 +1,17 @@
 import axios from 'axios'
 import { supabase } from './supabaseClient'
 
+/**
+ * All API calls use a SAME-ORIGIN relative base URL ('/api').
+ *
+ * Dev:  Vite dev server proxies /api/* → http://localhost:8000/api/*  (vite.config.js)
+ * Prod: Vercel rewrites /api/* → https://snap-backend-rq8g.onrender.com/api/*  (vercel.json)
+ *
+ * Using a relative URL means ad-blockers (McAfee WebAdvisor, Brave Shields, uBlock Origin)
+ * cannot block requests — the browser only ever calls its own origin.
+ */
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://snap-backend-rq8g.onrender.com',
+  baseURL: '',
 })
 
 axiosClient.interceptors.request.use(async (config) => {
