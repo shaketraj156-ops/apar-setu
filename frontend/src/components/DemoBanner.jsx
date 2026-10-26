@@ -15,6 +15,7 @@ export default function DemoBanner() {
 
   const exit = async () => {
     await supabase.auth.signOut()
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     navigate('/', { replace: true })
   }
 

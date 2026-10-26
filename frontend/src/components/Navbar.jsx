@@ -62,6 +62,7 @@ export default function Navbar() {
     await supabase.auth.signOut()
     setUserDropdownOpen(false)
     setMobileOpen(false)
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     navigate('/', { replace: true })
   }
 
