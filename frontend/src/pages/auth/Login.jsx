@@ -36,7 +36,13 @@ export default function Login() {
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) {
-        setError(authError.message)
+        if (authError.message?.includes('Failed to fetch')) {
+          setError(
+            'Unable to reach authentication server (Failed to fetch). If using Brave or an ad-blocker, please disable shields for this site or check your internet connection.'
+          )
+        } else {
+          setError(authError.message)
+        }
         return
       }
       const { data: profile } = await supabase

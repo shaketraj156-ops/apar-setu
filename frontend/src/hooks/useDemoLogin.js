@@ -17,14 +17,32 @@ export default function useDemoLogin() {
     const password = DEMO_PASSWORD || 'password123'
     setBusyKey(account.key)
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      let res = await supabase.auth.signInWithPassword({
         email: account.email,
         password
       })
-      if (authError) {
-        setError(`Could not sign in to the demo account (${authError.message}). Please verify credentials.`)
+
+      // If initial attempt failed with 'Failed to fetch', retry once after 500ms
+      if (res.error && res.error.message?.includes('Failed to fetch')) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        res = await supabase.auth.signInWithPassword({
+          email: account.email,
+          password
+        })
+      }
+
+      if (res.error) {
+        if (res.error.message?.includes('Failed to fetch')) {
+          setError(
+            'Unable to reach Supabase authentication server (Failed to fetch). If using Brave or an ad-blocker (e.g. uBlock Origin), please pause shields for this site or check your network connection.'
+          )
+        } else {
+          setError(`Could not sign in to the demo account (${res.error.message}). Please verify credentials.`)
+        }
         return
       }
+
+      const { data } = res
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -34,7 +52,13 @@ export default function useDemoLogin() {
       // Redirect directly to the account's home portal
       navigate(account.home, { replace: true })
     } catch (err) {
-      setError(err.message || 'Unable to start the demo. Check your connection and try again.')
+      if (err.message?.includes('Failed to fetch')) {
+        setError(
+          'Unable to reach Supabase authentication server (Failed to fetch). If using Brave or an ad-blocker (e.g. uBlock Origin), please pause shields for this site or check your network connection.'
+        )
+      } else {
+        setError(err.message || 'Unable to start the demo. Check your connection and try again.')
+      }
     } finally {
       setBusyKey(null)
     }
