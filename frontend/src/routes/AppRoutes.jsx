@@ -9,6 +9,7 @@
  *   /how-it-works               → Step-by-step workflow page
  *   /about                      → About APAARSetu page
  *   /login                      → Supabase auth login
+ *   /demo                       → One-click demo access (when VITE_ENABLE_DEMO=true)
  *   /register                   → Supabase auth registration
  *
  *   /institution                → Institution Portal (institution_staff, institution_admin)
@@ -34,6 +35,7 @@ import React from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import Footer from '../components/layout/Footer'
+import DemoBanner from '../components/DemoBanner'
 import axiosClient from '../api/axiosClient'
 import useAuth from '../hooks/useAuth'
 import ProtectedRoute from './ProtectedRoute'
@@ -45,6 +47,7 @@ const Features = React.lazy(() => import('../pages/public/Features'))
 const HowItWorks = React.lazy(() => import('../pages/public/HowItWorks'))
 const About = React.lazy(() => import('../pages/public/About'))
 const Login = React.lazy(() => import('../pages/auth/Login'))
+const Demo = React.lazy(() => import('../pages/public/Demo'))
 const Register = React.lazy(() => import('../pages/auth/Register'))
 const AictePortal = React.lazy(() => import('../pages/AictePortal'))
 const InstitutionPortal = React.lazy(() => import('../pages/InstitutionPortal'))
@@ -159,6 +162,7 @@ function AppFrame() {
   return (
     <>
       <Navbar />
+      <DemoBanner />
       <React.Suspense fallback={<div className="page-state" role="status">Loading page…</div>}>
         <Routes>
           {/* ── Public Pages (no auth required) ── */}
@@ -169,6 +173,7 @@ function AppFrame() {
 
           {/* ── Auth Pages ── */}
           <Route path="/login" element={<Login />} />
+          <Route path="/demo" element={<Demo />} />
           <Route path="/register" element={<Register />} />
 
           {/* ── Institution Portal (institution_staff, institution_admin) ── */}

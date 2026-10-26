@@ -202,3 +202,14 @@ You can either:
 cd d:\GitHub\apar-setu\backend
 .\venv\Scripts\Activate.ps1   # activate the venv if not already
 python scripts/get_token.py admin@apar-setu.org password123
+
+## Demo mode
+
+A one-click demo (Institution Admin, AICTE Officer, Student, Verifier) can be enabled for exploration without registration. Setup and walkthrough: `docs/demo-script.md`.
+
+  eit.admin@demo.test
+  aicte@demo.test
+  student@demo.test
+  verifier@demo.test
+  password: 4pGdDa7NG10RFG
+  
