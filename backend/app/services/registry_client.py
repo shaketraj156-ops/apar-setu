@@ -1,9 +1,4 @@
-"""Client for the mock APAAR registry service (mock_apaar_registry, default http://localhost:8001).
-
-Uses only the standard library. If the registry cannot be reached we return PENDING, so the
-validation engine raises a warning instead of wrongly marking a student INVALID.
-"""
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import os
@@ -20,13 +15,20 @@ class RegistryStatus(str, Enum):
 
 
 class RegistryClient:
-    def __init__(self, base_url: str | None = None, timeout: float = 3.0):
+    def __init__(self, base_url: str | None = None, timeout: float = 0.5):
         self.base_url = (base_url or os.getenv("MOCK_APAAR_REGISTRY_URL", "http://localhost:8001")).rstrip("/")
         self.timeout = timeout
+        self.use_fake = os.getenv("USE_FAKE_REGISTRY", "true").lower() in ("true", "1", "yes")
 
     def lookup(self, apaar_id: str | None) -> RegistryStatus:
         if not apaar_id:
             return RegistryStatus.INVALID
+        if self.use_fake:
+            if apaar_id.endswith("9999"):
+                return RegistryStatus.NOT_FOUND
+            if apaar_id.endswith("0000"):
+                return RegistryStatus.INVALID
+            return RegistryStatus.VALID
         try:
             with urllib.request.urlopen(f"{self.base_url}/verify/{apaar_id}", timeout=self.timeout) as resp:
                 return RegistryStatus(json.load(resp)["status"])

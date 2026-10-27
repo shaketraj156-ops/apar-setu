@@ -1,10 +1,16 @@
-import io
+﻿import io
 import re
+import uuid
 from datetime import date
 from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query, Depends
 import pandas as pd
-from app.services.supabase_client import get_supabase_admin_client
+from sqlalchemy.orm import Session
+from sqlalchemy import select, and_
+
+from app.db.session import get_db
+from app.db.models import Institution, Programme, UploadBatch, StudentRecord, ValidationFinding
+from app.core.masking import hash_apaar_id
 from app.services.registry_client import RegistryClient, RegistryStatus
 from app.services.revalidation_service import revalidate_record, next_record_status
 from app.core.config import settings
@@ -14,37 +20,99 @@ router = APIRouter(prefix="/batches", tags=["Upload Batches & Ingestion"])
 _APAAR_RE = re.compile(r"^\d{12}$")
 
 @router.get("")
-def list_batches(institution_id: Optional[str] = Query(None)):
-    client = get_supabase_admin_client()
-    query = client.table("upload_batches").select("*, institutions(name, aicte_code)")
+def list_batches(institution_id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    query = db.query(UploadBatch)
     if institution_id:
-        query = query.eq("institution_id", institution_id)
-    res = query.order("created_at", desc=True).execute()
-    return res.data
+        try:
+            inst_uuid = uuid.UUID(institution_id)
+            query = query.filter(UploadBatch.institution_id == inst_uuid)
+        except ValueError:
+            return []
+    batches = query.order_by(UploadBatch.created_at.desc()).all()
+    results = []
+    for b in batches:
+        inst = db.get(Institution, b.institution_id)
+        results.append({
+            "id": str(b.id),
+            "institution_id": str(b.institution_id),
+            "file_name": b.file_name,
+            "total_rows": b.total_rows,
+            "valid_rows": b.valid_rows,
+            "error_rows": b.error_rows,
+            "warning_rows": b.warning_rows,
+            "status": b.status,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "institutions": {
+                "name": inst.name if inst else "Unknown",
+                "aicte_code": inst.aicte_code if inst else ""
+            } if inst else None
+        })
+    return results
 
 @router.get("/{batch_id}")
-def get_batch(batch_id: str):
-    client = get_supabase_admin_client()
-    res = client.table("upload_batches").select("*, institutions(name)").eq("id", batch_id).execute()
-    if not res.data:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    batch = res.data[0]
+def get_batch(batch_id: str, db: Session = Depends(get_db)):
+    try:
+        b_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid batch ID format")
 
-    findings_res = client.table("validation_findings").select("*, student_records(full_name, student_institution_id, apaar_id)").eq("batch_id", batch_id).execute()
-    batch["findings"] = findings_res.data
-    return batch
+    batch = db.get(UploadBatch, b_uuid)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    inst = db.get(Institution, batch.institution_id)
+    findings = db.query(ValidationFinding).filter(ValidationFinding.batch_id == b_uuid).all()
+
+    findings_data = []
+    for f in findings:
+        st = db.get(StudentRecord, f.record_id) if f.record_id else None
+        findings_data.append({
+            "id": str(f.id),
+            "batch_id": str(f.batch_id),
+            "record_id": str(f.record_id) if f.record_id else None,
+            "row_number": f.row_number,
+            "rule_code": f.rule_code,
+            "severity": f.severity,
+            "message": f.message,
+            "evidence": f.evidence,
+            "recommended_action": f.recommended_action,
+            "is_resolved": f.is_resolved,
+            "student_records": {
+                "full_name": st.full_name if st else "",
+                "student_institution_id": st.student_institution_id if st else "",
+                "apaar_id": st.apaar_id if st else ""
+            } if st else None
+        })
+
+    return {
+        "id": str(batch.id),
+        "institution_id": str(batch.institution_id),
+        "file_name": batch.file_name,
+        "total_rows": batch.total_rows,
+        "valid_rows": batch.valid_rows,
+        "error_rows": batch.error_rows,
+        "warning_rows": batch.warning_rows,
+        "status": batch.status,
+        "created_at": batch.created_at.isoformat() if batch.created_at else None,
+        "institutions": {"name": inst.name if inst else "Unknown"},
+        "findings": findings_data
+    }
 
 @router.post("/upload")
 async def upload_student_batch(
     file: UploadFile = File(...),
-    institution_id: str = Form(...)
+    institution_id: str = Form(...),
+    db: Session = Depends(get_db)
 ):
-    client = get_supabase_admin_client()
+    try:
+        inst_uuid = uuid.UUID(institution_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid institution_id format")
 
     # 1. Verify institution exists
-    inst_res = client.table("institutions").select("*").eq("id", institution_id).execute()
-    if not inst_res.data:
-        raise HTTPException(status_code=400, detail="Invalid institution_id")
+    inst = db.get(Institution, inst_uuid)
+    if not inst:
+        raise HTTPException(status_code=400, detail="Invalid institution_id: institution does not exist")
 
     # 2. Parse file content
     contents = await file.read()
@@ -64,17 +132,20 @@ async def upload_student_batch(
         raise HTTPException(status_code=400, detail="Uploaded file contains no rows")
 
     # 3. Create upload_batch record
-    batch_insert = client.table("upload_batches").insert({
-        "institution_id": institution_id,
-        "file_name": file.filename,
-        "total_rows": total_rows,
-        "status": "validating"
-    }).execute()
-    batch_id = batch_insert.data[0]["id"]
+    batch = UploadBatch(
+        institution_id=inst_uuid,
+        file_name=file.filename or "upload.csv",
+        total_rows=total_rows,
+        status="validating"
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    batch_id = batch.id
 
     # 4. Fetch institution programmes
-    prog_res = client.table("programmes").select("*").eq("institution_id", institution_id).execute()
-    prog_by_name = {p["name"].strip().lower(): p for p in prog_res.data}
+    programmes = db.query(Programme).filter(Programme.institution_id == inst_uuid).all()
+    prog_by_name = {p.name.strip().lower(): p for p in programmes}
 
     registry = RegistryClient(base_url=settings.MOCK_APAAR_REGISTRY_URL)
 
@@ -87,8 +158,8 @@ async def upload_student_batch(
 
     error_count = 0
     warning_count = 0
-    records_to_insert = []
-    findings_to_insert = []
+    student_records = []
+    row_findings_map = []
 
     # 6. Validate each row
     for idx, row in df.iterrows():
@@ -109,7 +180,7 @@ async def upload_student_batch(
         enrol = str(row.get("enrollment_status", "active")).lower().strip() or "active"
 
         programme = prog_by_name.get(pname)
-        prog_id = programme["id"] if programme else (prog_res.data[0]["id"] if prog_res.data else None)
+        prog_id = programme.id if programme else (programmes[0].id if programmes else None)
 
         row_findings = []
 
@@ -123,17 +194,33 @@ async def upload_student_batch(
                 "recommended_action": "Remove duplicate entries"
             })
 
-        # Base revalidate check
+        # Cross-institution duplicate check
         if programme:
             active_other = set()
             dup_inst = False
             if apaar and _APAAR_RE.match(apaar):
-                cross = client.table("student_records").select("institution_id").eq("apaar_id", apaar).eq("enrollment_status", "active").execute()
-                for c in cross.data:
-                    if c["institution_id"] != institution_id:
-                        active_other.add(c["institution_id"])
+                h = hash_apaar_id(apaar)
+                cross = db.query(StudentRecord.institution_id).filter(
+                    StudentRecord.apaar_id_hash == h,
+                    StudentRecord.enrollment_status == "active"
+                ).all()
+                for c in cross:
+                    if c[0] != inst_uuid:
+                        active_other.add(str(c[0]))
                     else:
                         dup_inst = True
+
+            prog_dict = {
+                "id": str(programme.id),
+                "name": programme.name,
+                "approved_intake": programme.approved_intake,
+                "supernumerary_quota": programme.supernumerary_quota,
+                "nri_quota": programme.nri_quota,
+                "oci_quota": programme.oci_quota,
+                "fn_quota": programme.fn_quota,
+                "session_start": programme.session_start.isoformat() if programme.session_start else None,
+                "session_end": programme.session_end.isoformat() if programme.session_end else None
+            }
 
             base_findings = revalidate_record(
                 record={
@@ -142,7 +229,7 @@ async def upload_student_batch(
                     "full_name": name,
                     "dob": dob,
                     "admission_date": adm_date,
-                    "programme_id": prog_id,
+                    "programme_id": str(prog_id) if prog_id else None,
                     "academic_year": ay,
                     "category": cat,
                     "is_nri": is_nri,
@@ -150,7 +237,7 @@ async def upload_student_batch(
                     "is_foreign_national": is_fn,
                     "is_supernumerary": is_sup
                 },
-                programme=programme,
+                programme=prog_dict,
                 registry=registry,
                 other_active_institution_ids=active_other,
                 duplicate_in_institution=dup_inst
@@ -165,77 +252,122 @@ async def upload_student_batch(
 
         reg_st = registry.lookup(apaar).value if apaar and _APAAR_RE.match(apaar) else None
 
-        records_to_insert.append({
-            "batch_id": batch_id,
-            "institution_id": institution_id,
-            "programme_id": prog_id,
-            "academic_year": ay,
-            "student_institution_id": sid,
-            "full_name": name or f"Student {row_num}",
-            "gender": gender or "O",
-            "dob": dob,
-            "admission_date": adm_date or str(date.today()),
-            "category": cat if cat in ["general","obc","sc","st","ews","management","nri","oci","foreign_national"] else "general",
-            "is_supernumerary": is_sup,
-            "is_nri": is_nri,
-            "is_oci": is_oci,
-            "is_foreign_national": is_fn,
-            "enrollment_status": enrol if enrol in ["active","withdrawn","transferred","completed"] else "active",
-            "record_status": rec_status,
-            "registry_status": reg_st,
-            "apaar_id": apaar or None
-        })
+        existing_st = db.query(StudentRecord).filter(
+            StudentRecord.institution_id == inst_uuid,
+            StudentRecord.student_institution_id == sid,
+            StudentRecord.academic_year == ay
+        ).first()
 
-        for f in row_findings:
-            findings_to_insert.append({
-                **f,
-                "batch_id": batch_id,
-                "row_number": row_num
-            })
+        if existing_st:
+            st = existing_st
+            st.batch_id = batch_id
+            st.programme_id = prog_id
+            st.full_name = name or st.full_name
+            st.gender = gender or st.gender
+            st.dob = date.fromisoformat(dob) if dob else None
+            st.admission_date = date.fromisoformat(adm_date) if adm_date else date.today()
+            st.category = cat if cat in ["general","obc","sc","st","ews","management","nri","oci","foreign_national"] else "general"
+            st.is_supernumerary = is_sup
+            st.is_nri = is_nri
+            st.is_oci = is_oci
+            st.is_foreign_national = is_fn
+            st.enrollment_status = enrol if enrol in ["active","withdrawn","transferred","completed"] else "active"
+            st.record_status = rec_status
+            st.registry_status = reg_st
+            st.apaar_id = apaar or None
+            db.query(ValidationFinding).filter(ValidationFinding.record_id == st.id).delete()
+        else:
+            st = StudentRecord(
+                batch_id=batch_id,
+                institution_id=inst_uuid,
+                programme_id=prog_id,
+                academic_year=ay,
+                student_institution_id=sid,
+                full_name=name or f"Student {row_num}",
+                gender=gender or "O",
+                dob=date.fromisoformat(dob) if dob else None,
+                admission_date=date.fromisoformat(adm_date) if adm_date else date.today(),
+                category=cat if cat in ["general","obc","sc","st","ews","management","nri","oci","foreign_national"] else "general",
+                is_supernumerary=is_sup,
+                is_nri=is_nri,
+                is_oci=is_oci,
+                is_foreign_national=is_fn,
+                enrollment_status=enrol if enrol in ["active","withdrawn","transferred","completed"] else "active",
+                record_status=rec_status,
+                registry_status=reg_st,
+                apaar_id=apaar or None
+            )
+            db.add(st)
+        student_records.append(st)
+        row_findings_map.append(row_findings)
 
-    # 7. Insert student records in bulk
-    ins_records = client.table("student_records").insert(records_to_insert).execute()
-    inserted_records = ins_records.data or []
+    # 7. Insert student records and validation findings
+    db.commit()
+    for st in student_records:
+        db.refresh(st)
 
-    # Map findings to inserted student record IDs
-    for f in findings_to_insert:
-        r_idx = f["row_number"] - 1
-        if 0 <= r_idx < len(inserted_records):
-            f["record_id"] = inserted_records[r_idx]["id"]
+    findings_objects = []
+    for idx, findings in enumerate(row_findings_map):
+        st = student_records[idx]
+        for f in findings:
+            findings_objects.append(ValidationFinding(
+                batch_id=batch_id,
+                record_id=st.id,
+                row_number=idx + 1,
+                rule_code=f["rule_code"],
+                severity=f["severity"],
+                message=f["message"],
+                evidence=f.get("evidence", {}),
+                recommended_action=f.get("recommended_action")
+            ))
 
-    if findings_to_insert:
-        client.table("validation_findings").insert(findings_to_insert).execute()
+    if findings_objects:
+        db.add_all(findings_objects)
 
     # 8. Update batch status
     final_status = "has_errors" if error_count > 0 else "validated"
-    client.table("upload_batches").update({
-        "valid_rows": total_rows - error_count - warning_count,
-        "error_rows": error_count,
-        "warning_rows": warning_count,
-        "status": final_status
-    }).eq("id", batch_id).execute()
+    batch.valid_rows = total_rows - error_count - warning_count
+    batch.error_rows = error_count
+    batch.warning_rows = warning_count
+    batch.status = final_status
+    db.commit()
 
     return {
-        "batch_id": batch_id,
+        "batch_id": str(batch_id),
         "file_name": file.filename,
         "total_rows": total_rows,
         "valid_rows": total_rows - error_count - warning_count,
         "error_rows": error_count,
         "warning_rows": warning_count,
         "status": final_status,
-        "findings_count": len(findings_to_insert)
+        "findings_count": len(findings_objects)
     }
 
 @router.post("/{batch_id}/submit")
-def submit_batch(batch_id: str):
-    client = get_supabase_admin_client()
-    # Check if any unresolved error findings exist
-    err_res = client.table("validation_findings").select("id", count="exact").eq("batch_id", batch_id).eq("severity", "error").eq("is_resolved", False).execute()
-    if (err_res.count or 0) > 0:
-        raise HTTPException(status_code=400, detail=f"Cannot submit batch with {err_res.count} unresolved errors. Please correct them first.")
+def submit_batch(batch_id: str, db: Session = Depends(get_db)):
+    try:
+        b_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid batch ID")
 
-    # Update batch to submitted
-    client.table("upload_batches").update({"status": "submitted"}).eq("id", batch_id).execute()
-    # Update students in this batch to submitted
-    client.table("student_records").update({"record_status": "submitted"}).eq("batch_id", batch_id).neq("record_status", "flagged").execute()
+    batch = db.get(UploadBatch, b_uuid)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    err_count = db.query(ValidationFinding).filter(
+        ValidationFinding.batch_id == b_uuid,
+        ValidationFinding.severity == "error",
+        ValidationFinding.is_resolved == False
+    ).count()
+
+    if err_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot submit batch with {err_count} unresolved errors. Please correct them first.")
+
+    batch.status = "submitted"
+    db.query(StudentRecord).filter(
+        StudentRecord.batch_id == b_uuid,
+        StudentRecord.record_status != "flagged"
+    ).update({"record_status": "submitted"}, synchronize_session=False)
+
+    db.commit()
     return {"status": "submitted", "message": "Batch successfully submitted to AICTE Central Repository"}

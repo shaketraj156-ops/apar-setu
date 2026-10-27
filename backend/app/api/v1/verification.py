@@ -1,8 +1,12 @@
-import base64
+﻿import base64
+import uuid
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Response, Body
+from fastapi import APIRouter, HTTPException, Query, Response, Depends
 from pydantic import BaseModel
-from app.services.supabase_client import get_supabase_admin_client
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from app.db.session import get_db
+from app.db.models import StudentRecord, Institution, Programme, VerificationRequest, ConsentRecord
 from app.services.qr_credentials import (
     build_payload, sign_credential, verify_credential, qr_png, mask_apaar
 )
@@ -19,40 +23,55 @@ class GenerateQRRequest(BaseModel):
     record_id: str
 
 @router.post("/verify/student")
-def verify_student(req: VerifyStudentRequest):
-    client = get_supabase_admin_client()
-
+def verify_student(req: VerifyStudentRequest, db: Session = Depends(get_db)):
     # 1. Fetch student record with relations
-    res = client.table("student_records").select("*, institutions(name), programmes(name)").eq("id", req.record_id).execute()
-    if not res.data:
+    student = db.get(StudentRecord, req.record_id)
+    if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
-    record = res.data[0]
 
     # 2. Verify consent (if requester_id provided)
     if req.requester_id:
-        cons_res = client.table("consent_records").select("*").eq("record_id", req.record_id).eq("requester_id", req.requester_id).eq("status", "GRANTED").execute()
-        if not cons_res.data:
-            raise HTTPException(status_code=403, detail="No active GRANTED consent found for this requester. Access denied.")
+        try:
+            r_uuid = uuid.UUID(req.requester_id)
+            c = db.query(ConsentRecord).filter(
+                ConsentRecord.record_id == student.id,
+                ConsentRecord.requester_id == r_uuid,
+                ConsentRecord.status == "GRANTED"
+            ).first()
+            if not c:
+                raise HTTPException(status_code=403, detail="No active GRANTED consent found for this requester. Access denied.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    inst = db.get(Institution, student.institution_id) if student.institution_id else None
+    prog = db.get(Programme, student.programme_id) if student.programme_id else None
 
     # 3. Build minimal signed credential
     rec_dict = {
-        "apaar_id": record.get("apaar_id", ""),
-        "student_institution_id": record["student_institution_id"],
-        "institution": record["institutions"]["name"] if record.get("institutions") else "Institution",
-        "programme": record["programmes"]["name"] if record.get("programmes") else "Programme",
-        "academic_year": record["academic_year"],
-        "status": record["enrollment_status"].upper()
+        "apaar_id": student.apaar_id or "",
+        "student_institution_id": student.student_institution_id,
+        "institution": inst.name if inst else "Institution",
+        "programme": prog.name if prog else "Programme",
+        "academic_year": student.academic_year,
+        "status": student.enrollment_status.upper()
     }
     payload = build_payload(rec_dict, consent="GRANTED")
     signed_jwt = sign_credential(payload, settings.QR_PRIVATE_KEY_PEM)
 
     # 4. Log verification request in audit
-    client.table("verification_requests").insert({
-        "requester_id": req.requester_id or "00000000-0000-0000-0000-000000000002",
-        "record_id": req.record_id,
-        "purpose": "Academic and Employment Background Verification",
-        "result_status": "VERIFIED"
-    }).execute()
+    try:
+        v_req = VerificationRequest(
+            requester_id=uuid.UUID(req.requester_id) if req.requester_id else None,
+            record_id=student.id,
+            purpose="Academic and Employment Background Verification",
+            result_status="VERIFIED"
+        )
+        db.add(v_req)
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return {
         **payload,
@@ -60,21 +79,21 @@ def verify_student(req: VerifyStudentRequest):
     }
 
 @router.post("/credentials/qr")
-def generate_qr_credential(req: GenerateQRRequest):
-    client = get_supabase_admin_client()
-
-    res = client.table("student_records").select("*, institutions(name), programmes(name)").eq("id", req.record_id).execute()
-    if not res.data:
+def generate_qr_credential(req: GenerateQRRequest, db: Session = Depends(get_db)):
+    student = db.get(StudentRecord, req.record_id)
+    if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
-    record = res.data[0]
+
+    inst = db.get(Institution, student.institution_id) if student.institution_id else None
+    prog = db.get(Programme, student.programme_id) if student.programme_id else None
 
     rec_dict = {
-        "apaar_id": record.get("apaar_id", ""),
-        "student_institution_id": record["student_institution_id"],
-        "institution": record["institutions"]["name"] if record.get("institutions") else "Institution",
-        "programme": record["programmes"]["name"] if record.get("programmes") else "Programme",
-        "academic_year": record["academic_year"],
-        "status": record["enrollment_status"].upper()
+        "apaar_id": student.apaar_id or "",
+        "student_institution_id": student.student_institution_id,
+        "institution": inst.name if inst else "Institution",
+        "programme": prog.name if prog else "Programme",
+        "academic_year": student.academic_year,
+        "status": student.enrollment_status.upper()
     }
     payload = build_payload(rec_dict, consent="GRANTED")
     token = sign_credential(payload, settings.QR_PRIVATE_KEY_PEM)
@@ -94,25 +113,26 @@ def verify_qr_token(t: str = Query(..., description="The signed Ed25519 credenti
     return res
 
 @router.get("/credentials/qr/{record_id}/png")
-def download_qr_png(record_id: str):
-    client = get_supabase_admin_client()
-    res = client.table("student_records").select("*, institutions(name), programmes(name)").eq("id", record_id).execute()
-    if not res.data:
+def download_qr_png(record_id: str, db: Session = Depends(get_db)):
+    student = db.get(StudentRecord, record_id)
+    if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
-    record = res.data[0]
+
+    inst = db.get(Institution, student.institution_id) if student.institution_id else None
+    prog = db.get(Programme, student.programme_id) if student.programme_id else None
 
     rec_dict = {
-        "apaar_id": record.get("apaar_id", ""),
-        "student_institution_id": record["student_institution_id"],
-        "institution": record["institutions"]["name"] if record.get("institutions") else "Institution",
-        "programme": record["programmes"]["name"] if record.get("programmes") else "Programme",
-        "academic_year": record["academic_year"],
-        "status": record["enrollment_status"].upper()
+        "apaar_id": student.apaar_id or "",
+        "student_institution_id": student.student_institution_id,
+        "institution": inst.name if inst else "Institution",
+        "programme": prog.name if prog else "Programme",
+        "academic_year": student.academic_year,
+        "status": student.enrollment_status.upper()
     }
     payload = build_payload(rec_dict, consent="GRANTED")
     token = sign_credential(payload, settings.QR_PRIVATE_KEY_PEM)
     png_bytes = qr_png(token, base_url=settings.QR_BASE_URL)
 
     return Response(content=png_bytes, media_type="image/png", headers={
-        "Content-Disposition": f"inline; filename={record['student_institution_id']}_qr.png"
+        "Content-Disposition": f"inline; filename={student.student_institution_id}_qr.png"
     })

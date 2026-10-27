@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user, get_db, check_institution_access
+from app.api.deps import CurrentUser, get_current_user, get_optional_user, get_db, check_institution_access
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
 from app.db.models import Institution, StudentRecord, UploadBatch, Programme
@@ -16,12 +16,12 @@ settings = get_settings()
 @router.get("/", response_model=PaginatedResponse[InstitutionRead])
 def list_institutions(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    user: CurrentUser = Depends(get_current_user),
+    page_size: int = Query(20, ge=1, le=200),
+    user: CurrentUser | None = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     query = select(Institution)
-    if user.role in ["institution_admin", "institution_staff"]:
+    if user and user.role in ["institution_admin", "institution_staff"]:
         if not user.institution_id:
             return PaginatedResponse(total=0, page=page, page_size=page_size, items=[])
         query = query.where(Institution.id == user.institution_id)

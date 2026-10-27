@@ -3,6 +3,7 @@
 import uuid
 from datetime import date, datetime, timezone
 
+from sqlalchemy.schema import FetchedValue
 from sqlalchemy import (JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer,
                         String, Text, Uuid)
 from sqlalchemy.dialects.postgresql import JSONB
@@ -121,7 +122,7 @@ class StudentRecord(Base):
     dob: Mapped[date | None] = mapped_column(Date, nullable=True)
     admission_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     apaar_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    apaar_id_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    apaar_id_hash: Mapped[str | None] = mapped_column(String, server_default=FetchedValue(), nullable=True)
     category: Mapped[str] = mapped_column(String, default='general')
     is_supernumerary: Mapped[bool] = mapped_column(Boolean, default=False)
     is_nri: Mapped[bool] = mapped_column(Boolean, default=False)

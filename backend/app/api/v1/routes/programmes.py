@@ -1,5 +1,4 @@
-"""Programmes API placeholder."""
-# File: backend/app/api/v1/routes/programmes.py
+﻿# File: backend/app/api/v1/routes/programmes.py
 import uuid
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select, func
@@ -19,16 +18,20 @@ router = APIRouter()
 def list_programmes(
     institution_id: uuid.UUID | None = None,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=200),
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = select(Programme)
 
-    if user.role in ["institution_admin", "institution_staff"]:
-        query = query.where(Programme.institution_id == user.institution_id)
-    elif institution_id:
+    if institution_id:
+        if user.role in ["institution_admin", "institution_staff"]:
+            if user.institution_id:
+                check_institution_access(user, institution_id)
         query = query.where(Programme.institution_id == institution_id)
+    elif user.role in ["institution_admin", "institution_staff"]:
+        if user.institution_id:
+            query = query.where(Programme.institution_id == user.institution_id)
 
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     items = db.scalars(query.offset((page - 1) * page_size).limit(page_size)).all()
@@ -45,34 +48,28 @@ def list_programmes(
 def create_programme(
     payload: ProgrammeCreate,
     request: Request,
-    user: CurrentUser = Depends(require_role(["institution_admin", "aicte_officer", "system_admin"])),
+    user: CurrentUser = Depends(require_role(["aicte_officer", "system_admin"])),
     db: Session = Depends(get_db)
 ):
-    target_inst = user.institution_id if user.role == "institution_admin" else (payload.institution_id or user.institution_id)
-    if not target_inst:
-        raise ForbiddenError("Institution ID is required")
-
-    inst = db.get(Institution, target_inst)
+    inst = db.get(Institution, payload.institution_id)
     if not inst:
-        raise NotFoundError("Target institution does not exist")
+        raise NotFoundError("Institution not found")
 
     prog = Programme(
-        institution_id=target_inst,
+        institution_id=payload.institution_id,
         name=payload.name,
-        academic_year=payload.academic_year,
+        programme_code=payload.programme_code,
         approved_intake=payload.approved_intake,
         supernumerary_quota=payload.supernumerary_quota,
         nri_quota=payload.nri_quota,
         oci_quota=payload.oci_quota,
         fn_quota=payload.fn_quota,
-        session_start=payload.session_start,
-        session_end=payload.session_end
+        academic_year=payload.academic_year
     )
     db.add(prog)
     db.commit()
     db.refresh(prog)
 
-    # Audit log
     log_action(
         db=db,
         actor_id=user.id,
@@ -80,9 +77,23 @@ def create_programme(
         action="CREATE_PROGRAMME",
         entity_type="programme",
         entity_id=str(prog.id),
-        new_value=payload.model_dump(mode="json"),
+        new_value=payload.model_dump(),
         ip_address=request.client.host if request.client else None
     )
     db.commit()
 
+    return ProgrammeRead.model_validate(prog)
+
+
+@router.get("/{id}", response_model=ProgrammeRead)
+def get_programme(
+    id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    prog = db.get(Programme, id)
+    if not prog:
+        raise NotFoundError(f"Programme {id} not found")
+
+    check_institution_access(user, prog.institution_id)
     return ProgrammeRead.model_validate(prog)
