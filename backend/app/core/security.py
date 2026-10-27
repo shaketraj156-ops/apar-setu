@@ -43,9 +43,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
                 signing_key.key,
                 algorithms=["RS256", "ES256"],
                 audience=settings.SUPABASE_JWT_AUDIENCE,
-                issuer=settings.supabase_issuer,
                 leeway=60,  # tolerate small clock skew between this machine and Supabase
-                options={"verify_exp": True}
+                options={"verify_exp": True, "verify_iss": False}
             )
             return payload
         except PyJWKClientError as e:

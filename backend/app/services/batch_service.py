@@ -25,7 +25,7 @@ def revalidate_batch_service(db: Session, batch_id: uuid.UUID) -> UploadBatch:
     ).all())
     existing_apaars = set(filter(None, db.scalars(
         select(StudentRecord.apaar_id).where(
-            StudentRecord.record_status != "withdrawn",
+            StudentRecord.enrollment_status != "withdrawn",
             StudentRecord.batch_id != batch_id
         )
     ).all()))

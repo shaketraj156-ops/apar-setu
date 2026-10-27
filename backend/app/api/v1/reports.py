@@ -143,7 +143,7 @@ def export_report(
 
     client = get_supabase_admin_client()
     query = client.table(view_name).select("*")
-    if institution_id and name != "kpis":
+    if isinstance(institution_id, str) and institution_id.strip() and name != "kpis":
         query = query.eq("institution_id", institution_id)
     res = query.execute()
     rows = res.data or []

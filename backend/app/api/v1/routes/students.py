@@ -188,9 +188,7 @@ def patch_student(
                 value = None
         setattr(student, field, value)
 
-    # If APAAR ID was corrected, recompute the SHA-256 hash for DB lookup consistency
-    if payload.apaar_id is not None:
-        student.apaar_id_hash = hash_apaar_id(payload.apaar_id) if payload.apaar_id else None
+    # Note: apaar_id_hash is GENERATED ALWAYS in Postgres, computed automatically from apaar_id
 
     db.commit()
     db.refresh(student)
@@ -248,7 +246,6 @@ def create_student(
         dob=payload.dob,
         admission_date=payload.admission_date,
         apaar_id=payload.apaar_id,
-        apaar_id_hash=hash_apaar_id(payload.apaar_id),
         category=payload.category,
         is_supernumerary=payload.is_supernumerary,
         is_nri=payload.is_nri,

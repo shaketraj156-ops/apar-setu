@@ -143,7 +143,7 @@ export default function InstitutionPortal() {
       setUploadResult(res.data)
       loadInstitutionData(selectedInstId)
     } catch (err) {
-      alert(err.response?.data?.detail || 'Upload failed')
+      const msg = err.response?.data?.error?.message || err.response?.data?.detail || err.message || 'Upload failed'; alert(msg)
     } finally {
       setUploading(false)
       e.target.value = ''

@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import CurrentUser, get_db, require_role
 from app.core.errors import NotFoundError, UnprocessableError
 from app.core.masking import hash_apaar_id
-from app.db.models import Programme, UploadBatch, StudentRecord, ValidationFinding
-from app.schemas.batch import UploadBatchRead
+from app.db.models import Programme, UploadBatch, StudentRecord, ValidationFinding, Profile
+from app.schemas.batch import UploadBatchRead, FindingRead
 from app.services.csv_parser import parse_csv_stream
 from app.services.registry import verify_apaar_with_registry
 from app.services.validation.context import ValidationContext
@@ -55,7 +55,7 @@ def upload_csv(
         )
     ).all())
     existing_apaars = set(filter(None, db.scalars(
-        select(StudentRecord.apaar_id).where(StudentRecord.record_status != "withdrawn")
+        select(StudentRecord.apaar_id).where(StudentRecord.enrollment_status != "withdrawn")
     ).all()))
 
     ctx = ValidationContext(
@@ -75,9 +75,10 @@ def upload_csv(
     result = validate_batch(rows, ctx)
     batch_status = "has_errors" if result.error_rows > 0 else "validated"
 
+    uploader_id = user.id if db.get(Profile, user.id) else None
     batch = UploadBatch(
         institution_id=target_inst,
-        uploaded_by=user.id,
+        uploaded_by=uploader_id,
         file_name=file.filename or "upload.csv",
         total_rows=result.total_rows,
         valid_rows=result.valid_rows,
@@ -101,27 +102,53 @@ def upload_csv(
             try: adm_val = datetime.strptime(str(r["admission_date"]).strip(), "%Y-%m-%d").date()
             except Exception: pass
 
-        student = StudentRecord(
-            institution_id=target_inst,
-            programme_id=programme_id,
-            batch_id=batch.id,
-            academic_year=academic_year,
-            student_institution_id=r.get("student_institution_id") or f"ROW-{idx}",
-            full_name=r.get("full_name") or "UNKNOWN",
-            gender=r.get("gender"),
-            dob=dob_val,
-            admission_date=adm_val,
-            apaar_id=apaar,
-            apaar_id_hash=hash_apaar_id(apaar),
-            category=r.get("category") or "general",
-            is_supernumerary=bool(r.get("is_supernumerary")),
-            is_nri=bool(r.get("is_nri")),
-            is_oci=bool(r.get("is_oci")),
-            is_foreign_national=bool(r.get("is_foreign_national")),
-            record_status="draft",
-            registry_status=reg_status
-        )
-        db.add(student)
+        sid = r.get("student_institution_id") or f"ROW-{idx}"
+        existing_student = db.scalars(
+            select(StudentRecord).where(
+                StudentRecord.institution_id == target_inst,
+                StudentRecord.student_institution_id == sid,
+                StudentRecord.academic_year == academic_year
+            )
+        ).first()
+
+        if existing_student:
+            student = existing_student
+            student.programme_id = programme_id
+            student.batch_id = batch.id
+            student.full_name = r.get("full_name") or student.full_name
+            student.gender = r.get("gender") or student.gender
+            student.dob = dob_val or student.dob
+            student.admission_date = adm_val or student.admission_date
+            student.apaar_id = apaar
+            student.category = r.get("category") or student.category
+            student.is_supernumerary = bool(r.get("is_supernumerary"))
+            student.is_nri = bool(r.get("is_nri"))
+            student.is_oci = bool(r.get("is_oci"))
+            student.is_foreign_national = bool(r.get("is_foreign_national"))
+            student.record_status = "draft"
+            student.registry_status = reg_status
+            db.query(ValidationFinding).filter(ValidationFinding.record_id == student.id).delete()
+        else:
+            student = StudentRecord(
+                institution_id=target_inst,
+                programme_id=programme_id,
+                batch_id=batch.id,
+                academic_year=academic_year,
+                student_institution_id=sid,
+                full_name=r.get("full_name") or "UNKNOWN",
+                gender=r.get("gender"),
+                dob=dob_val,
+                admission_date=adm_val,
+                apaar_id=apaar,
+                category=r.get("category") or "general",
+                is_supernumerary=bool(r.get("is_supernumerary")),
+                is_nri=bool(r.get("is_nri")),
+                is_oci=bool(r.get("is_oci")),
+                is_foreign_national=bool(r.get("is_foreign_national")),
+                record_status="draft",
+                registry_status=reg_status
+            )
+            db.add(student)
         created_students.append(student)
 
     db.flush()
