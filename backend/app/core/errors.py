@@ -119,8 +119,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def handle_unexpected(_: Request, exc: Exception):
         log.exception('Unhandled error')
-
+        err_msg = str(exc) or type(exc).__name__
         return JSONResponse(
             status_code=500,
-            content=_body('INTERNAL_ERROR', 'Something went wrong')
+            content=_body('INTERNAL_ERROR', err_msg, details=err_msg)
         )

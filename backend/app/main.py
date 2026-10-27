@@ -44,5 +44,5 @@ def health():
         "status": "ok",
         "service": settings.APP_NAME,
         "env": settings.ENV,
-        "version": "1.0.0"
+        "version": "1.0.2"
     }
