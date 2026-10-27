@@ -1,5 +1,6 @@
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,9 +18,9 @@ for _prefix in ("postgresql+psycopg://", "postgresql://", "postgres://"):
         db_url = "postgresql+psycopg2://" + db_url[len(_prefix):]
         break
 
-# Supabase pooler requires username format 'postgres.<project-ref>'.
-# A bare username 'postgres' without project ref triggers FATAL password authentication failure.
-if "pooler.supabase.com" in db_url and ("://postgres:" in db_url or "://postgres@" in db_url):
+# If db_url points to invalid/failing Singapore pooler (ap-southeast-1) or any pooler
+# other than the working project database, switch to FALLBACK_DATABASE_URL:
+if "ap-southeast-1" in db_url or ("pooler.supabase.com" in db_url and "jegmxdnvwtgjtnnhxhak" not in db_url):
     db_url = FALLBACK_DATABASE_URL
 
 if not db_url:
@@ -33,27 +34,40 @@ elif db_url.startswith("sqlite:///") and not db_url.startswith("sqlite:///:memor
         backend_dir = Path(__file__).resolve().parents[2]
         db_url = f"sqlite:///{backend_dir / p}"
 
-if db_url.startswith('sqlite'):
-    # Used for local dev / pytest. StaticPool keeps one in-memory DB across threads.
-    engine = create_engine(
-        db_url,
-        connect_args={'check_same_thread': False},
-        poolclass=StaticPool,
-    )
-else:
-    engine = create_engine(
-        db_url,
+def make_engine(url: str):
+    if url.startswith('sqlite'):
+        return create_engine(
+            url,
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+    return create_engine(
+        url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=5,
         pool_recycle=1800,
     )
 
+engine = make_engine(db_url)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
 def get_db():
-    db = SessionLocal()
+    global engine, SessionLocal, db_url
+    try:
+        db = SessionLocal()
+        if not db_url.startswith('sqlite'):
+            db.execute(text("SELECT 1"))
+    except OperationalError:
+        if db_url != FALLBACK_DATABASE_URL:
+            db_url = FALLBACK_DATABASE_URL
+            engine = make_engine(FALLBACK_DATABASE_URL)
+            SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+            db = SessionLocal()
+        else:
+            raise
+
     try:
         yield db
     finally:
